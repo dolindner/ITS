@@ -1,9 +1,8 @@
 import threading
-import types
-from copy import deepcopy, copy
-from typing import MutableMapping, Any, List
-import hashlib
 import time
+import types
+from copy import copy
+from typing import MutableMapping, Any, List
 
 import torch
 from laplace import Laplace, LLLaplace
@@ -11,8 +10,6 @@ from laplace.utils import FeatureExtractor
 from torch.nn.utils import vector_to_parameters
 
 from confidence.model.base_model import ModelBasedConfidence
-
-
 from embedding_cache import LayerEmbeddingCache as _LayerEmbeddingCacheHelper
 
 # This is a very hacky way to ensure that we are not refitting laplace elements we have refitted before.
@@ -23,7 +20,9 @@ _LAPLACE_CACHE_SWEEP_INTERVAL = 60
 _LAPLACE_CACHE_SWEEPER_THREAD = None
 _LAPLACE_CACHE_SWEEPER_STOP = threading.Event()
 _LAPLACE_CACHE_LOCK = threading.Lock()
-#it caches and regularly cleanes them.
+
+
+# it caches and regularly cleanes them.
 
 
 def _laplace_cache_sweeper():
@@ -37,7 +36,7 @@ def _laplace_cache_sweeper():
                 # Get the laplace object before deletion
                 laplace_obj, _ = _LAPLACE_FIT_CACHE[k]
                 # Probably would have unintended side effects. TODO CHECK
-                #if hasattr(laplace_obj, 'model'):
+                # if hasattr(laplace_obj, 'model'):
                 #    for param in laplace_obj.model.parameters():
                 #        param.grad = None
 
@@ -79,7 +78,6 @@ def _nn_functional_samples(
         generator: torch.Generator | None = None,
         **model_kwargs,
 ) -> torch.Tensor:
-
     fs = list()
 
     feats = None
@@ -102,13 +100,15 @@ def _nn_functional_samples(
 
     return fs
 
-#torch laplace only allows single output models, so we temporary cache the other outputs and get them later.
+
+# torch laplace only allows single output models, so we temporary cache the other outputs and get them later.
 class OutputCacheWrapper(torch.nn.Module):
     """
     Wrapper that enables model that have multiple ouputs like intermediate features to work with torch-laplace.
     This wrapper causes non logit output the be saved which can later be gotten using get_cached_output.
     """
-    def __init__(self, base_model:torch.nn.Module, index: int):
+
+    def __init__(self, base_model: torch.nn.Module, index: int):
         super().__init__()
         self.base_model = base_model
         self.index = index
@@ -139,7 +139,6 @@ class OutputCacheWrapper(torch.nn.Module):
         self._cache.clear()
         self.call_count = 0
 
-
     def forward(self, x):
         outputs = self.base_model(x)
         if isinstance(outputs, torch.Tensor):
@@ -163,16 +162,16 @@ class OutputCacheWrapper(torch.nn.Module):
         self.call_count += 1
         return indexed_outputs
 
-    def get_cached_output(self,stack=True,mean=True,stack_dim=0):
+    def get_cached_output(self, stack=True, mean=True, stack_dim=0):
         if self.call_count == 0:
             raise ValueError("No outputs cached yet. Call forward() first.")
-        elif self.call_count ==1:
+        elif self.call_count == 1:
             out = self._cache[0]
             self._cache.clear()
             self.call_count = 0
             return out
 
-        #use _pytree to stack outputs
+        # use _pytree to stack outputs
         if mean:
             out = torch.utils._pytree.tree_map(
                 lambda *args: torch.stack(args, dim=stack_dim), *self._cache
@@ -182,7 +181,7 @@ class OutputCacheWrapper(torch.nn.Module):
 
         if mean and stack:
             out = torch.utils._pytree.tree_map(
-                lambda t: t.mean(dim = stack_dim), out
+                lambda t: t.mean(dim=stack_dim), out
             )
 
         # Clear cache and explicitly delete references
@@ -190,17 +189,16 @@ class OutputCacheWrapper(torch.nn.Module):
             if isinstance(cached_item, torch.Tensor):
                 del cached_item
 
-
-        #clear cache
+        # clear cache
         self._cache.clear()
         self.call_count = 0
         return out
 
 
-
-#LLLaplace._nn_predictive_samples = LaplaceModelSamplingConfidence._nn_predictive_samples
+# LLLaplace._nn_predictive_samples = LaplaceModelSamplingConfidence._nn_predictive_samples
 
 from contextlib import contextmanager
+
 
 @contextmanager
 def temporarily_enable_grads(model: torch.nn.Module):
@@ -227,43 +225,47 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
     """
     Wraps torch-laplace Laplace and uses specified methods.
     """
+
     def __init__(
-        self,
-        base_model: torch.nn.Module,
-        index = None,  # index of the output
-        confidence=None,
+            self,
+            base_model: torch.nn.Module,
+            index=None,  # index of the output
+            confidence=None,
 
-        #sampling settings
-        samples: int = 10, #only used for mc pred type
-        pred_type: str = "glm",  # glm or nn for classification. nn only supports mc carle link aprx
-        link_approx: str = "probit",  # 'bridge', 'bridge_norm', or 'mc' for classification In addition we supoprt none in which case we simply return the distribution.
-        # probit approximates the expected sigmoid of the logits directly from the distribution. So the output is always a softmax. Bridge similary transform the gaussian to a dirichlet distribution.
-        diagonal_output =False,  # diagonal glm output, only for 'glm' pred_type
+            # sampling settings
+            samples: int = 10,  # only used for mc pred type
+            pred_type: str = "glm",  # glm or nn for classification. nn only supports mc carle link aprx
+            link_approx: str = "probit",
+            # 'bridge', 'bridge_norm', or 'mc' for classification In addition we supoprt none in which case we simply return the distribution.
+            # probit approximates the expected sigmoid of the logits directly from the distribution. So the output is always a softmax. Bridge similary transform the gaussian to a dirichlet distribution.
+            diagonal_output=False,  # diagonal glm output, only for 'glm' pred_type
 
-        #return type settings
-        index_laplace: int = None, # index for the laplace fitting will use the same as normal index if None
+            # return type settings
+            index_laplace: int = None,  # index for the laplace fitting will use the same as normal index if None
 
+            softmax: bool = True,
+            # only used for mc pred type, if true we apply softmax to the output, if false we return the raw logits.
+            average: bool = True,
+            # unly used for mc pred type, if true we average over samples, if false we return the samples directly.
 
-        softmax: bool = True, #only used for mc pred type, if true we apply softmax to the output, if false we return the raw logits.
-        average: bool = True, #unly used for mc pred type, if true we average over samples, if false we return the samples directly.
+            # laplace settings
+            hessian_structure: str = "kron",  # {'diag', 'kron', 'full', 'lowrank', 'gp'}
+            subset_of_weights: str = "last_layer",
 
-        #laplace settings
-        hessian_structure: str = "kron",# {'diag', 'kron', 'full', 'lowrank', 'gp'}
-        subset_of_weights: str = "last_layer",
+            # fit settings
+            method="marglik",  # does not need a val loader "gridsearch" is the alternative
+            kwargs_opt_prior: dict = None,  # see torch-laplace optimize_prior_precision for all kwargs.
 
-        # fit settings
-        method="marglik",  # does not need a val loader "gridsearch" is the alternative
-        kwargs_opt_prior: dict = None,  # see torch-laplace optimize_prior_precision for all kwargs.
+            # keep the same
+            subnetwork_indices=None,
+            backend: str = None,  # see BaseLaplace for details on backend
 
-        # keep the same
-        subnetwork_indices = None,
-        backend: str = None, #see BaseLaplace for details on backend
-
-        # caching
-        enable_fit_cache: bool = True,  # enable in-memory caching of fitted Laplace objects keyed by base model hash
-        # laplace only adds paramaters that requires grad, so we need to unfreeze them.(This also must be done for loading from cache from state dict)
-        set_all_parameters_trainable: bool = True,
-        prior_precision: float = 1.0, #note not supported for cahcing
+            # caching
+            enable_fit_cache: bool = True,
+            # enable in-memory caching of fitted Laplace objects keyed by base model hash
+            # laplace only adds paramaters that requires grad, so we need to unfreeze them.(This also must be done for loading from cache from state dict)
+            set_all_parameters_trainable: bool = True,
+            prior_precision: float = 1.0,  # note not supported for cahcing
     ):
         """Initializes the LaplaceModelSamplingConfidence wrapper. Note no all setting combination fully implemtented.
         Recommend is to use mc sampling while returning the logits per sample and to let other modules handle them.
@@ -328,7 +330,7 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
         else:
             model = base_model
 
-        #set all parameters to require grad
+        # set all parameters to require grad
         self.set_all_parameters_trainable = set_all_parameters_trainable
 
         if set_all_parameters_trainable:
@@ -360,15 +362,16 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
                     enable_backprop=True,
                     temperature=self.temperature
                 )
-        #print precision after init
+        # print precision after init
         print("prior precision after init:", self.laplace.prior_precision)
 
-        #if type of laplace is Lllaplace inject function
+        # if type of laplace is Lllaplace inject function
         if isinstance(self.laplace, LLLaplace):
-            print("Warning: Injecting _nn_predictive_samples into LLLaplace instance. This is a workaround for compatibility with torch-laplace. Not sure why it is not reimplemented even though parent implemnts it.")
+            print(
+                "Warning: Injecting _nn_predictive_samples into LLLaplace instance. This is a workaround for compatibility with torch-laplace. Not sure why it is not reimplemented even though parent implemnts it.")
             self.laplace._nn_functional_samples = types.MethodType(
                 _nn_functional_samples, self.laplace
-            ) #not working method of base class is still called
+            )  # not working method of base class is still called
 
         self.pred_type = pred_type
         self.link_approx = link_approx
@@ -380,7 +383,7 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
 
         self.softmax = softmax  # only used for mc pred type, if true we apply softmax to the output, if false we return the raw logits.
         self.method = method
-        self.experimental_last_layer_opt =False #TODO implement a way to cache intermediate values and only replace last layer weights if this is set to true.
+        self.experimental_last_layer_opt = False  # TODO implement a way to cache intermediate values and only replace last layer weights if this is set to true.
         self.fitted = False
         self._cache_key = None
         self._last_cache_refresh = 0.0
@@ -406,7 +409,7 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
                 extras_items = repr(self.fit_other_kwargs)
         else:
             extras_items = repr(self.fit_other_kwargs)
-        #add extra attributes that (may) affect fit results.
+        # add extra attributes that (may) affect fit results.
         extras = "|".join(
             [
                 str(getattr(self.laplace, "hessian_structure", "")),
@@ -418,6 +421,7 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
             ]
         )
         return f"{base_hash}|{extras}"
+
     @torch.no_grad()
     def fit(self, train_loader, validation_loader=None):
         """
@@ -470,10 +474,10 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
                 if self.method != "none":
                     self.laplace.optimize_prior_precision(
                         method=self.method, pred_type=self.pred_type, val_loader=validation_loader,
-                        link_approx=self.link_approx, **self.fit_other_kwargs, init_prior_prec=self.laplace.prior_precision
+                        link_approx=self.link_approx, **self.fit_other_kwargs,
+                        init_prior_prec=self.laplace.prior_precision
                     )
             self.fitted = True
-
 
         if self.enable_fit_cache:
             key = self._make_cache_key()
@@ -482,10 +486,6 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
                 _LAPLACE_FIT_CACHE[key] = (self.laplace, time.time())
                 _ensure_laplace_cache_sweeper()
             print(f"Stored fitted Laplace into in-memory cache (key={key})")
-
-
-
-
 
     def forward_no_link_approx(self, x: torch.Tensor, y: torch.Tensor = None):
         """
@@ -498,9 +498,8 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
         Returns:
             Tuple (confidence, model_output) or raises if not fitted/unsupported combination.
         """
-        logits,logits_var = self.laplace._glm_predictive_distribution(x,diagonal_output=self.diagonal_output)
-        tup = (logits,logits_var)
-
+        logits, logits_var = self.laplace._glm_predictive_distribution(x, diagonal_output=self.diagonal_output)
+        tup = (logits, logits_var)
 
         if self.index_laplace is not None:
             output = self.model.get_cached_output(stack=False, mean=False, stack_dim=1)
@@ -529,7 +528,6 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
         self.laplace.enable_backprop = backprop
         if type(self.laplace.model) == FeatureExtractor:
             self.laplace.model.enable_backprop = backprop
-
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None):
         """
@@ -576,7 +574,6 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
                 f"Unsupported link approximation: {self.link_approx} for pred_type {self.pred_type}. "
                 "Use 'mc' for NN or 'probit', 'bridge', 'bridge_norm' for GLM."
             )
-
 
     def forward_monte_carlo(self, x: torch.Tensor, y: torch.Tensor = None):
         """
@@ -663,7 +660,7 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
             )
 
         average_output = self.laplace(x, pred_type=self.pred_type, link_approx=self.link_approx, n_samples=self.samples,
-                                     diagonal_output=self.diagonal_output)
+                                      diagonal_output=self.diagonal_output)
 
         if self.index_laplace is not None:
             outputs = self.model.get_cached_output(
@@ -681,8 +678,6 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
         else:
             outputs = average_output
 
-
-
         confidence = self.confidence(outputs, y)
 
         if self.index is None:
@@ -690,9 +685,11 @@ class LaplaceModelSamplingConfidence(ModelBasedConfidence):
         self.model.disable_caching()
         return confidence, outputs[self.index]
 
+
 if __name__ == "__main__":
     import torch
     from torch.utils.data import DataLoader, TensorDataset
+
 
     class DualOutputModule(torch.nn.Module):
         def __init__(self, in_features: int, hidden: int, num_classes: int):

@@ -1,26 +1,27 @@
 import gc
-import torch
-import optuna
 from typing import Callable, Optional, Sequence, Dict, Any
 
-from search.random_search import RSLR
-from search.simulated_anealing import ParallelSimulatedAnnealing
-from search.swarm import PSO
+import optuna
+import torch
+
+from its.search import InverseTransformationSearch
 from search.coordinate_descent import CoordinateDescent, WeightedCoordinateDescent
 from search.gradient_descent import (
     ParallelGradientDescent
 )
+from search.random_search import RSLR
+from search.simulated_anealing import ParallelSimulatedAnnealing
+from search.swarm import PSO
 from src.utils.eval.ood_performance import ITSWRAPPER, ConfidenceEvaluator
-from its.search import InverseTransformationSearch
 from src.utils.transform_sequence import TransformSequence
 from src.utils.transformation_problem import TransformationProblem
 
 
-#Note removed sgd as optimizer as it cant handle different scales of the different detectors well.
-#Note all algos use a prefix to specify paramtes belonging to them to keep found hyperparatmes clean.
-#This requires the paratmes to be named in such a fashion otherwise they are excluded from saving and thus not stored for the final evaluation.
+# Note removed sgd as optimizer as it cant handle different scales of the different detectors well.
+# Note all algos use a prefix to specify paramtes belonging to them to keep found hyperparatmes clean.
+# This requires the paratmes to be named in such a fashion otherwise they are excluded from saving and thus not stored for the final evaluation.
 
-#Note in beginning RSLR also did support a shgo based sampling which is why it is misnamed in the config.
+# Note in beginning RSLR also did support a shgo based sampling which is why it is misnamed in the config.
 
 # --------------------------------------------------
 # Helper to copy TransformationProblem with different init_method
@@ -80,43 +81,50 @@ class WCD_LATTICE_WRAPPER(torch.nn.Module):
         return self.wcd_optimizer.optimize(lattice_problem, x, y)
 
 
-
-
 def _assert_budget(cost: int, budget: int, label: str):
     if cost > budget:
         raise ValueError(f"{label} budget exceeded: cost={cost} > budget={budget}")
 
+
 def _cost_shgo(n_init: int, local_runs: int, local_max_steps: int, grad_weight: int) -> int:
-    if local_max_steps==0:
+    if local_max_steps == 0:
         return n_init
-    return n_init + local_runs * local_max_steps * grad_weight +local_runs
+    return n_init + local_runs * local_max_steps * grad_weight + local_runs
+
 
 def _cost_parallel_sa(par_runs: int, max_iter: int) -> int:
-    return par_runs * (max_iter+1)
+    return par_runs * (max_iter + 1)
+
 
 def _cost_pso(swarm: int, steps: int) -> int:
     return swarm * (steps + 1)
+
+
 def _cost_cd(dim: int, samples: int) -> int:
     return dim * samples
+
+
 def _cost_wcd(dim: int, base: int, first_factor: int, rounds: int) -> int:
     per_round = base * (dim - 1 + first_factor)
     return per_round * rounds
 
+
 def _cost_pgd(par_runs: int, max_iter: int, grad_weight: int) -> int:
     return par_runs * (max_iter * grad_weight + 1)
+
 
 def _cost_its(n_samples: int, n_hypotheses: int, dim: int) -> int:
     return n_samples * (1 + n_hypotheses * (dim - 1))
 
 
 def _evaluate_model_partial(
-    search_obj,
-    problem,
-    model,
-    dataloader,
-    device: str = "cuda",
-    repeats: int = 1,
-    check_percent: float = 0.1,
+        search_obj,
+        problem,
+        model,
+        dataloader,
+        device: str = "cuda",
+        repeats: int = 1,
+        check_percent: float = 0.1,
 ):
     """
     Helper function to run evaluator to a specific percentage and then return the evaluator and the accuracy at that checkpoint.
@@ -136,20 +144,21 @@ def _evaluate_model_partial(
     acc_at_checkpoint = evaluator.run_until(check_percent)["accuracy_mean"]
     return evaluator, acc_at_checkpoint
 
-#---
-#Now follow methods to sample parameters for each algorithm, ensuring the total cost does not exceed the budget.
-#Grad weigths tell how to count a backward plus forward call. Defaults to 2 as this is roughly what matches reality for a lot of models
+
+# ---
+# Now follow methods to sample parameters for each algorithm, ensuring the total cost does not exceed the budget.
+# Grad weigths tell how to count a backward plus forward call. Defaults to 2 as this is roughly what matches reality for a lot of models
 # (mostly slightly above that in range 2.1 to 2.2 if ones disables grad to paramtes as we do not need it here)
-#---
+# ---
 def sample_shgo_params(trial: optuna.Trial, budget: int, grad_weight: int = 2) -> Dict[str, Any]:
-    max_init = budget -grad_weight -1
+    max_init = budget - grad_weight - 1
     if max_init < 1:
-        max_init=budget
-    low_max =int(0.5 * budget)
+        max_init = budget
+    low_max = int(0.5 * budget)
     n_init = trial.suggest_int("shgo_initial_samples", low_max, max_init)
-    max_local_runs = max(1, int((budget - n_init)/(3 * grad_weight +1)))
+    max_local_runs = max(1, int((budget - n_init) / (3 * grad_weight + 1)))
     local_runs = trial.suggest_int("shgo_local_runs", 1, max_local_runs)
-    per_run_budget = max(0, ((budget - n_init)- local_runs)// (local_runs * grad_weight))
+    per_run_budget = max(0, ((budget - n_init) - local_runs) // (local_runs * grad_weight))
     local_steps = per_run_budget
     _assert_budget(_cost_shgo(n_init, local_runs, local_steps, grad_weight), budget, "SHGO")
     sel_method = trial.suggest_categorical("shgo_selection_method", ["topk", "knn"])
@@ -162,25 +171,29 @@ def sample_shgo_params(trial: optuna.Trial, budget: int, grad_weight: int = 2) -
         "shgo_selection_method": sel_method,
         "shgo_local_opt": opt_choice,
         "shgo_lr": lr,
-        "shgo_acceptance_criterion": trial.suggest_categorical("shgo_acceptance_criterion", ['always', 'step', 'final']),
+        "shgo_acceptance_criterion": trial.suggest_categorical("shgo_acceptance_criterion",
+                                                               ['always', 'step', 'final']),
         "grad_weight": grad_weight,
     }
     if opt_choice == "sgd":
         params["shgo_momentum"] = trial.suggest_float("shgo_momentum", 0.0, 0.95)
 
     # reassign any unassigned budget to initial samples (n_init) so total cost == budget
-    current_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"], grad_weight)
+    current_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"],
+                              grad_weight)
     leftover = budget - current_cost
     if leftover > 0:
         params["shgo_initial_samples"] += leftover
-        _assert_budget(_cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"], grad_weight), budget, "SHGO(top-up)")
+        _assert_budget(_cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"],
+                                  grad_weight), budget, "SHGO(top-up)")
 
     return params
 
+
 def sample_parallel_sa_params(trial: optuna.Trial, budget: int) -> Dict[str, Any]:
-    max_parallel = max(1, budget // 10) #means at least 10 iters
+    max_parallel = max(1, budget // 10)  # means at least 10 iters
     parallel_runs = trial.suggest_int("psa_parallel_runs", 1, max_parallel)
-    max_iter = max(1, budget // parallel_runs -1) #at least parallel_runs iterations
+    max_iter = max(1, budget // parallel_runs - 1)  # at least parallel_runs iterations
     _assert_budget(_cost_parallel_sa(parallel_runs, max_iter), budget, "ParallelSA")
     return {
         "psa_parallel_runs": parallel_runs,
@@ -220,11 +233,15 @@ def sample_pso_params(trial: optuna.Trial, budget: int, min_swarm: int = 4) -> D
         "pso_vmax_scale": trial.suggest_float("pso_vmax_scale", 0.05, 0.5),
     }
 
-def sample_cd_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, samples_min: int = 1) -> Dict[str, Any]:
+
+def sample_cd_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, samples_min: int = 1) -> Dict[
+    str, Any]:
     # Dimension-dependent values deferred to finalize_params.
     return {}
 
-def sample_wcd_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, rounds_range=(1, 5)) -> Dict[str, Any]:
+
+def sample_wcd_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, rounds_range=(1, 5)) -> Dict[
+    str, Any]:
     # Only store rounds + first-dim weight (dimension deferred)
     min_rounds, max_rounds_hint = rounds_range
     rounds = trial.suggest_int("wcd_rounds", min_rounds, max_rounds_hint)
@@ -234,14 +251,18 @@ def sample_wcd_params(trial: optuna.Trial, budget: int, device: str, val_loader,
         "wcd_first_dim_factor": first_factor,
     }
 
-def sample_wcd_lattice_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, rounds_range=(1, 5)) -> Dict[str, Any]:
+
+def sample_wcd_lattice_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem,
+                              rounds_range=(1, 5)) -> Dict[str, Any]:
     """
     Sample parameters for WCD with lattice initialization.
     Uses same sampling logic as regular WCD.
     """
     return sample_wcd_params(trial, budget, device, val_loader, problem, rounds_range)
 
-def sample_cd_multi_cyclus_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, rounds_range=(1, 5)) -> Dict[str, Any]:
+
+def sample_cd_multi_cyclus_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem,
+                                  rounds_range=(1, 5)) -> Dict[str, Any]:
     """
     Sample parameters for multi-round coordinate descent (CD with cycles).
     This is a WCD variant with first_dim_factor fixed to 1 (no special weighting).
@@ -267,7 +288,6 @@ def sample_pgd_params(trial: optuna.Trial, budget: int, grad_weight: int = 2) ->
     max_parallel_runs = max(1, budget // (2 * grad_weight + 1))
     parallel_runs = trial.suggest_int("pgd_parallel_runs", 1, max_parallel_runs)
 
-
     max_iterations = int((budget - parallel_runs) / (parallel_runs * grad_weight))
     max_iterations = max(1, max_iterations)
 
@@ -291,18 +311,17 @@ def sample_pgd_params(trial: optuna.Trial, budget: int, grad_weight: int = 2) ->
         "grad_weight": grad_weight,
     }
 
-    #SGD uses momentum. F
-    #if optimizer == "sgd":
+    # SGD uses momentum. F
+    # if optimizer == "sgd":
     #   params["pgd_momentum"] = trial.suggest_float("pgd_momentum", 0.0, 0.95)
 
     return params
 
 
-
-
 def sample_random_search_params(trial: optuna.Trial, budget: int, **kwargs) -> Dict[str, Any]:
     # Parameterless, budget is used entirely for initial samples at build time.
     return {}
+
 
 def sample_its_params(trial: optuna.Trial, budget: int, device: str, val_loader, problem, **_) -> Dict[str, Any]:
     # We again only sample n hypothesis and defer to the problem.
@@ -312,7 +331,8 @@ def sample_its_params(trial: optuna.Trial, budget: int, device: str, val_loader,
         "its_n_samples": None,  # explicit marker: actual n_samples is derived at build time
         "its_mc_steps": 1,  # fixed as requested
         "its_change_of_mind": trial.suggest_categorical("its_change_of_mind", ["score", "off"]),
-        "its_gaussian_filter_channel_wise": trial.suggest_categorical("its_gaussian_filter_channel_wise", [False, True]),
+        "its_gaussian_filter_channel_wise": trial.suggest_categorical("its_gaussian_filter_channel_wise",
+                                                                      [False, True]),
         "its_unique_class_condition": trial.suggest_categorical("its_unique_class_condition", [False, True]),
     }
 
@@ -333,9 +353,9 @@ _PARAM_SAMPLERS = {
 }
 
 
-#---
+# ---
 # Builder that creates the algorithms and maps the sampled paramtes to actual values.
-#---
+# ---
 def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budget: Optional[int] = None, model=None):
     if algo == "shgo":
         opt_name = params.get("shgo_local_opt", "adam")
@@ -363,10 +383,10 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
             initial_samples=budget,
             local_runs=1,
             local_max_steps=0,
-            local_opt_class=torch.optim.Adam, # Not used, but required
+            local_opt_class=torch.optim.Adam,  # Not used, but required
             local_opt_kwargs={},
-            selection_method="topk", # Not used
-            acceptance_criterion="step", # Not used
+            selection_method="topk",  # Not used
+            acceptance_criterion="step",  # Not used
         )
     if algo == "parallel_sa":
         return ParallelSimulatedAnnealing(
@@ -410,6 +430,7 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
             discreteness = ts.get_discreteness_vector().to(torch.long).cpu().tolist()
             if len(discreteness) != dim:
                 raise ValueError("TransformSequence discreteness length mismatch with problem dimension.")
+
             # cost for candidate count s is sum(min(s, n_disc) if n_disc>0 else s)
             def total_cost_for(s):
                 total = 0
@@ -419,6 +440,7 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
                     else:
                         total += int(s)
                 return total
+
             # start from conservative baseline
             s = max(1, budget // max(1, dim))
             # try to grow s as long as total cost fits budget
@@ -431,7 +453,8 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
             # persist derived value
             params["cd_number_samples"] = number_samples
             params["cd_dim_estimate"] = dim
-            assert _cost_cd(dim, number_samples) <= budget, f"Derived CD cost exceeds budget: { _cost_cd(dim, number_samples)} > {budget}"
+            assert _cost_cd(dim,
+                            number_samples) <= budget, f"Derived CD cost exceeds budget: {_cost_cd(dim, number_samples)} > {budget}"
         return CoordinateDescent(number_samples=number_samples)
     if algo == "wcd":
         if "_wcd_samples_per_dim" in params:
@@ -677,7 +700,6 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
             if len(discreteness) != dim:
                 raise ValueError("TransformSequence discreteness length mismatch with problem dimension.")
 
-
             per_round_budget = max(1, budget // max(1, rounds))
             denom_per_round = (dim - 1 + first_factor)
             if denom_per_round <= 0:
@@ -850,25 +872,23 @@ def build_search_algorithm(algo: str, params: Dict[str, Any], problem=None, budg
     raise KeyError(f"Unknown algorithm '{algo}'")
 
 
-
 # Generic objective factory
 def make_search_objective(
-    algo: str,
-    model,
-    val_loader,
-    problem,
-    budget: int,
-    device: str = "cuda",
-    repeats: int = 1,
-    check_percent: float = 0.1,
-    **algo_kwargs,
+        algo: str,
+        model,
+        val_loader,
+        problem,
+        budget: int,
+        device: str = "cuda",
+        repeats: int = 1,
+        check_percent: float = 0.1,
+        **algo_kwargs,
 ) -> Callable[[optuna.Trial], float]:
     problems_list = list(problem) if isinstance(problem, Sequence) else [problem]
 
-    #Prepare problems for ITS-like algorithms before building anything
-    if algo in ("its","its2"):
+    # Prepare problems for ITS-like algorithms before building anything
+    if algo in ("its", "its2"):
         problems_list = [ITSWRAPPER._prepare_problem(p) for p in problems_list]
-
 
     def clone_loader(loader):
         return torch.utils.data.DataLoader(
@@ -922,11 +942,10 @@ def make_search_objective(
         # Ensure derived params (like RSLR n_init top-up) are persisted as they are not sampled.
         trial.set_user_attr("full_params", base_params)
 
-
         # ---- Phase 1: run all problems to 0.1 ----
         partials = []
         acc_intermediates = []
-        for p,loader in zip(problems_list, loaders_list):
+        for p, loader in zip(problems_list, loaders_list):
             search_inst = build_search_algorithm(algo, base_params, problem=p, budget=budget, model=model)
             evaluator, acc_ckpt = _evaluate_model_partial(
                 search_inst, p, model, loader, device=device, repeats=repeats, check_percent=check_percent
@@ -951,41 +970,65 @@ def make_search_objective(
 
     return objective
 
+
 # --------------------------------------------------
 # Backward-compatible wrappers
 # --------------------------------------------------
 def make_shgo_objective(model, val_loader, problem, budget, grad_weight: int = 2, device="cuda", repeats=1, **_):
-    return make_search_objective("shgo", model, val_loader, problem, budget, device=device, repeats=repeats, grad_weight=grad_weight)
+    return make_search_objective("shgo", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 grad_weight=grad_weight)
+
 
 def make_parallel_sa_objective(model, val_loader, problem, budget, device="cuda", repeats=1, **_):
     return make_search_objective("parallel_sa", model, val_loader, problem, budget, device=device, repeats=repeats)
 
+
 def make_parallel_sa_resets_objective(model, val_loader, problem, budget, device="cuda", repeats=1, **_):
-    return make_search_objective("parallel_sa_resets", model, val_loader, problem, budget, device=device, repeats=repeats)
+    return make_search_objective("parallel_sa_resets", model, val_loader, problem, budget, device=device,
+                                 repeats=repeats)
+
 
 def make_pso_objective(model, val_loader, problem, budget, device="cuda", repeats=1, min_swarm: int = 4, **_):
-    return make_search_objective("pso", model, val_loader, problem, budget, device=device, repeats=repeats, min_swarm=min_swarm)
+    return make_search_objective("pso", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 min_swarm=min_swarm)
 
-def make_coordinate_descent_objective(model, val_loader, problem, budget, device="cuda", repeats=1, samples_min: int = 4, **_):
-    return make_search_objective("cd", model, val_loader, problem, budget, device=device, repeats=repeats, samples_min=samples_min)
 
-def make_weighted_coordinate_descent_objective(model, val_loader, problem, budget, device="cuda", repeats=1, rounds_range=(1,5), **_):
-    return make_search_objective("wcd", model, val_loader, problem, budget, device=device, repeats=repeats, rounds_range=rounds_range)
+def make_coordinate_descent_objective(model, val_loader, problem, budget, device="cuda", repeats=1,
+                                      samples_min: int = 4, **_):
+    return make_search_objective("cd", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 samples_min=samples_min)
 
-def make_weighted_coordinate_descent_lattice_objective(model, val_loader, problem, budget, device="cuda", repeats=1, rounds_range=(1,5), **_):
-    return make_search_objective("wcd_lattice", model, val_loader, problem, budget, device=device, repeats=repeats, rounds_range=rounds_range)
 
-def make_cd_multi_cyclus_objective(model, val_loader, problem, budget, device="cuda", repeats=1, rounds_range=(1,5), **_):
-    return make_search_objective("cd_multi_cyclus", model, val_loader, problem, budget, device=device, repeats=repeats, rounds_range=rounds_range)
+def make_weighted_coordinate_descent_objective(model, val_loader, problem, budget, device="cuda", repeats=1,
+                                               rounds_range=(1, 5), **_):
+    return make_search_objective("wcd", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 rounds_range=rounds_range)
+
+
+def make_weighted_coordinate_descent_lattice_objective(model, val_loader, problem, budget, device="cuda", repeats=1,
+                                                       rounds_range=(1, 5), **_):
+    return make_search_objective("wcd_lattice", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 rounds_range=rounds_range)
+
+
+def make_cd_multi_cyclus_objective(model, val_loader, problem, budget, device="cuda", repeats=1, rounds_range=(1, 5),
+                                   **_):
+    return make_search_objective("cd_multi_cyclus", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 rounds_range=rounds_range)
+
 
 def make_parallel_gd_objective(model, val_loader, problem, budget, device="cuda", repeats=1, grad_weight: int = 2, **_):
-    return make_search_objective("pgd", model, val_loader, problem, budget, device=device, repeats=repeats, grad_weight=grad_weight)
+    return make_search_objective("pgd", model, val_loader, problem, budget, device=device, repeats=repeats,
+                                 grad_weight=grad_weight)
+
 
 def make_random_search_objective(model, val_loader, problem, budget, device="cuda", repeats=1, **_):
     return make_search_objective("random_search", model, val_loader, problem, budget, device=device, repeats=repeats)
 
+
 def make_its_objective(model, val_loader, problem, budget, device="cuda", repeats=1, **_):
     return make_search_objective("its", model, val_loader, problem, budget, device=device, repeats=repeats)
+
 
 def make_its2_objective(model, val_loader, problem, budget, device="cuda", repeats=1, **_):
     return make_search_objective("its2", model, val_loader, problem, budget, device=device, repeats=repeats)
@@ -997,7 +1040,7 @@ def save_best_trial_params(study: optuna.Study, algo: str, path: str, include_un
     """
     from .default_values import filter_algo_params, save_params
     trial = study.best_trial
-    params = trial.user_attrs.get("full_params") #the full params should conatin all
+    params = trial.user_attrs.get("full_params")  # the full params should conatin all
     if params is None:
         # Fallback: this only contains suggested paramtes and loses non suggested ones. #TODO check
         params = dict(trial.params)
@@ -1005,7 +1048,6 @@ def save_best_trial_params(study: optuna.Study, algo: str, path: str, include_un
     if not include_unrelated:
         params = filter_algo_params(params, algo)
     save_params(params, path)
-
 
 
 __all__ = [
@@ -1024,10 +1066,10 @@ __all__ = [
     "make_random_search_objective",
 ]
 
-
-#TODO clean this
+# TODO clean this
 if __name__ == "__main__":
     from search.default_values import load_params, filter_algo_params, default_allocation
+
     # Simple smoke test: show default allocations & computed costs
     print("== objective_generators smoke test ==")
     budgets = {
@@ -1040,6 +1082,7 @@ if __name__ == "__main__":
         "random_search": 80,
         "its": 50,
     }
+
 
     def compute_cost(method: str, params):
         if method == "shgo" or method == "random_search":
@@ -1077,11 +1120,12 @@ if __name__ == "__main__":
             return None
         return None
 
+
     for m, b in budgets.items():
         try:
             alloc = default_allocation(m, b)
             cost = compute_cost(m, alloc)
-            print(f"[{m}] budget={b} cost={cost} params={ {k:v for k,v in alloc.items() if not k.startswith('_')} }")
+            print(f"[{m}] budget={b} cost={cost} params={ {k: v for k, v in alloc.items() if not k.startswith('_')} }")
             if cost is not None and cost > b:
                 print(f"  WARNING: cost exceeds budget")
         except Exception as e:
@@ -1092,28 +1136,37 @@ if __name__ == "__main__":
     # --------------------------------------------------
     print("\n== parameter sampling test (Optuna) ==")
     import random
+
     random.seed(0)
     torch.manual_seed(0)
     sampler_seed = 0
     n_trials = 30
     grad_weight_default = 2
 
+
     # Dummy dataset / loader / problem to satisfy samplers needing dimension (cd, wcd)
     class _DummyDataset(torch.utils.data.Dataset):
         def __len__(self): return 8
+
         def __getitem__(self, idx):
             x = torch.randn(1, 8, 8)
             y = torch.randint(0, 2, (1,)).item()
             return x, y
+
+
     dummy_loader = torch.utils.data.DataLoader(_DummyDataset(), batch_size=2)
+
 
     class _DummyProblem:
         def initial_param(self, batch: int, k: int):
             return torch.zeros(batch, k, 10)  # dimension=10
+
         def transform(self, data, params):
             return data
+
         def calc_complete_size(self):
             return 10
+
 
     dummy_problem = _DummyProblem()
 
@@ -1124,13 +1177,14 @@ if __name__ == "__main__":
     needs_loader = {"cd", "wcd", "its", "its2", "random_search"}  # added 'its2', 'random_search'
 
     for algo, budget in budgets.items():
-        budget = random.randint(10,100)
+        budget = random.randint(10, 100)
         if algo not in _PARAM_SAMPLERS:
             print(f"[{algo}] sampler missing, skipping")
             continue
         print(f"\n[{algo}] sampling trials (budget={budget})")
         optuna_sampler = optuna.samplers.TPESampler(seed=sampler_seed)
         study = optuna.create_study(direction="maximize", sampler=optuna_sampler)
+
 
         def sampling_objective(trial: optuna.Trial):
             if algo in needs_loader:
@@ -1141,8 +1195,10 @@ if __name__ == "__main__":
                 params = _PARAM_SAMPLERS[algo](trial, budget)  # type: ignore
             cost = compute_cost(algo, params)
             assert cost is None or cost <= budget, f"Sampled cost {cost} exceeds budget {budget} for {algo}"
-            print(f"  trial={trial.number} cost={cost} params={ {k:v for k,v in params.items() if not k.startswith('_')} }")
+            print(
+                f"  trial={trial.number} cost={cost} params={ {k: v for k, v in params.items() if not k.startswith('_')} }")
             return 0.0  # dummy objective value
+
 
         study.optimize(sampling_objective, n_trials=n_trials, show_progress_bar=False)
 
@@ -1165,38 +1221,46 @@ if __name__ == "__main__":
         "cmaes": 30,
     }
 
+
     # Tiny dataset (single batch) for fast objective evaluation
     class _TinyDataset(torch.utils.data.Dataset):
         def __len__(self): return 1
+
         def __getitem__(self, idx):
             x = torch.randn(1, 8, 8)
             y = torch.randint(0, 2, (1,)).item()
             return x, y
+
+
     tiny_loader = torch.utils.data.DataLoader(_TinyDataset(), batch_size=1)
+
 
     class _TinyProblem:
         def __init__(self):
             self.confidence_module = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(64, 1), torch.nn.Sigmoid())
             self.max_batch_size = 1
-        def initial_param(self, batch: int, k: int=None):
+
+        def initial_param(self, batch: int, k: int = None):
             if k is None:
                 return torch.zeros(batch, 6)
             return torch.zeros(batch, k, 6)
+
         def transform(self, data, params):
             return data
+
         # Added: minimal calculate_error satisfying optimizer interface
         def calculate_error(self, x, params, y=None):
             # Return a random error per candidate; other info placeholder zeros
             # params expected shape: (num_candidates, param_dim) or similar
             n = params.shape[0]
-            errors = torch.rand(n, device=params.device) +torch.mean(params, dim=1) * 0.1  # slight param dependence
+            errors = torch.rand(n, device=params.device) + torch.mean(params, dim=1) * 0.1  # slight param dependence
             other = torch.zeros(n, device=params.device)
             return errors, other
-        def correct_param(self,params):
+
+        def correct_param(self, params):
             return params
 
-        def consolidate(self,x, best_param, best_error, classes_best):
-
+        def consolidate(self, x, best_param, best_error, classes_best):
             # Get indices of minimum error per sample
             best_indices = torch.argmin(best_error, dim=1, keepdim=True)  # shape: (batch_size, 1)
             # Gather best parameters: best_param has shape (batch_size, parallel_runs, param_dim)
@@ -1219,6 +1283,7 @@ if __name__ == "__main__":
 
         def calc_complete_size(self):
             return 6
+
 
     tiny_problem = _TinyProblem()
     tiny_model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(64, 2))
@@ -1243,7 +1308,7 @@ if __name__ == "__main__":
         objective = wrappers[algo](tiny_model, tiny_loader, tiny_problem, b, device="cpu", repeats=1)
         study.optimize(objective, n_trials=2, show_progress_bar=False)
         full = study.best_trial.user_attrs.get("full_params", {})
-        print(f" full_params: { {k:v for k,v in full.items()} }")
+        print(f" full_params: { {k: v for k, v in full.items()} }")
         # Assertions for key derived fields
         if algo == "shgo":
             assert "shgo_local_steps" in full, "Missing derived shgo_local_steps"
@@ -1272,14 +1337,17 @@ if __name__ == "__main__":
         # Ensure derived keys still present where applicable
         if algo == "shgo":
             assert "shgo_local_steps" in loaded, "Loaded SHGO missing shgo_local_steps"
+
+
         # (No dimension-dependent assertions for cd / wcd anymore)
 
         # Cost consistency
         def _cost_for(algo: str, p: Dict[str, Any], dim: int, budget: int) -> int:
             if algo == "shgo":
-                return _cost_shgo(p["shgo_initial_samples"], p["shgo_local_runs"], p["shgo_local_steps"], p.get("grad_weight", 2))
+                return _cost_shgo(p["shgo_initial_samples"], p["shgo_local_runs"], p["shgo_local_steps"],
+                                  p.get("grad_weight", 2))
             if algo == "random_search":
-                return budget # It's parameterless, cost is budget
+                return budget  # It's parameterless, cost is budget
             if algo == "parallel_sa":
                 return _cost_parallel_sa(p["psa_parallel_runs"], p["psa_max_iterations"])
             if algo == "pso":
@@ -1303,10 +1371,12 @@ if __name__ == "__main__":
                     return _cost_its(p["its_n_samples"], p["its_n_hypotheses"], dim)
                 return None
 
+
         def _extract_instance_cost(algo: str, inst, params: Dict[str, Any], dim: int, budget: int) -> Optional[int]:
             try:
                 if algo == "shgo":
-                    return _cost_shgo(inst.initial_samples, inst.local_runs, inst.local_max_steps, params.get("grad_weight", 2))
+                    return _cost_shgo(inst.initial_samples, inst.local_runs, inst.local_max_steps,
+                                      params.get("grad_weight", 2))
                 if algo == "random_search":
                     return inst.initial_samples
                 if algo == "parallel_sa":
@@ -1314,11 +1384,13 @@ if __name__ == "__main__":
                 if algo == "pso":
                     return _cost_pso(inst.swarm_size, inst.steps)
                 if algo in ("pgd", "pgd_restart", "pgd_window"):
-                    return _cost_pgd(params["pgd_parallel_runs"], params["pgd_max_iterations"], params.get("grad_weight", 2))
+                    return _cost_pgd(params["pgd_parallel_runs"], params["pgd_max_iterations"],
+                                     params.get("grad_weight", 2))
                 # Skip cd / wcd (dimension & allocation reconstructed on build)
             except Exception:
                 return None
             return None
+
 
         saved_cost = _cost_for(algo, loaded, dim=tiny_problem.calc_complete_size(), budget=b)
         assert saved_cost <= b, f"Loaded params exceed budget: {saved_cost}>{b} ({algo})"

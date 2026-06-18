@@ -1,11 +1,13 @@
 import torch
+
+
 class BaseOptimizer:
     def optimize(
-        self,
-        transformation_problem,
-        x: torch.Tensor,
-        y: torch.Tensor = None,
-        verbose: bool = False
+            self,
+            transformation_problem,
+            x: torch.Tensor,
+            y: torch.Tensor = None,
+            verbose: bool = False
     ):
         """
         Given a transformation problem(transformations plus confidence model) it optmizes an input

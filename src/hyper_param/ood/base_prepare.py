@@ -18,7 +18,6 @@ from src.utils.eval.ood_performance import progressive_confidence_evaluation, Co
 from src.utils.transformation_problem import TransformationProblem
 from transformation import get_transformation_sequence_images
 
-
 # --- Registries for OOD Detectors ---
 
 OOD_DEFAULT_PARAM_FACTORIES: Dict[str, Callable[[], Dict[str, Any]]] = {}
@@ -598,4 +597,3 @@ def find_best_detector_and_instantiate(
         second_problem = create_ood_problem(second_choice, params2, **final_kwargs2)
 
     return best_detector, best_problem, best_score_dict, second_choice, second_problem, second_score_dict
-

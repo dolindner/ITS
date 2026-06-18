@@ -1,9 +1,10 @@
-#TODO adjust to make similar to other confidence modules
+# TODO adjust to make similar to other confidence modules
 
 import torch
 import torch.nn.functional as F
 
 from confidence.base_confidence import ConfidenceModule
+
 
 class MutualInformationCriterion(ConfidenceModule):
     """
@@ -11,6 +12,7 @@ class MutualInformationCriterion(ConfidenceModule):
     Higher mutual information indicates more confidence in the predictions.
     Returns 1-MI so that the score is an inlier score (high for inliers).
     """
+
     def __init__(self, input_logits=False):
         super().__init__()
         self.input_logits = input_logits

@@ -1,6 +1,6 @@
+import numpy as np
 import torch
 import torchvision
-import numpy as np
 
 
 def load_mnist(exclude_class=9, test_set=False, transform=None):

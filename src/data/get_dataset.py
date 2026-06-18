@@ -1,16 +1,15 @@
 import os
 import random
-import torch
-import numpy as np
-from torch_geometric.datasets import ModelNet
-from torch_geometric.transforms import NormalizeScale, SamplePoints
-from box import Box
-from torchvision.models import ResNet50_Weights
 
-from src.data.dataset.mnist_no_pil import NoPILMNIST, AffineTransformDataset, NoPILEMNIST
+import numpy as np
+from box import Box
+from torch_geometric.transforms import SamplePoints
+
 from embedding_cache import LayerEmbeddingCache
+from src.data.dataset.mnist_no_pil import NoPILMNIST, AffineTransformDataset, NoPILEMNIST
 from src.data.transformation import get_transformation_sequence_images
 from src.utils.transform_sequence import create_sampler
+
 try:
     from src.data.dataset.geometric_wrapper import GeometricsDatasetWrapper
     from torch_geometric.datasets import ModelNet
@@ -24,20 +23,19 @@ from src.utils.transforms.apply import transform_strokes_affine, grid_resample_b
 import torch.nn as nn
 
 
-
-
 def _build_loaders(train, val, test, batch_size, dataloader_kwargs):
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_no_shuffle = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=False, **dataloader_kwargs)  # Non-shuffled train loader
+    train_loader_no_shuffle = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)  # Non-shuffled train loader
     val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     shuffle_val = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
     return train_loader, train_loader_no_shuffle, val_loader, test_loader, shuffle_val
 
 
-
 class PicklableSampler:
     """Picklable wrapper for transform sequence sampling."""
+
     def __init__(self, transform_sequence):
         self.transform_sequence = transform_sequence
 
@@ -47,8 +45,10 @@ class PicklableSampler:
         T = self.transform_sequence(params)
         return T.squeeze(0) if batch_size == 1 else T
 
+
 import torch
 from typing import Callable, Iterable, Tuple
+
 
 class BatchAugmentCollate:
     """
@@ -56,6 +56,7 @@ class BatchAugmentCollate:
     - sampler(batch_size) -> transformation batch T (shape: B x ...)
     - transform_sequence.transform(images, T) -> transformed images
     """
+
     def __init__(self,
                  sampler: Callable[[int], torch.Tensor],
                  datatype: str = "image",
@@ -94,15 +95,23 @@ class BatchAugmentCollate:
         return transformed, targets
 
 
-def _maybe_transform(datasets_tuple, batch_size, dataset_info, dataloader_kwargs, transform_seq, seed=None,clip_images=True,clip_min=None,clip_max=None):
+def _maybe_transform(datasets_tuple, batch_size, dataset_info, dataloader_kwargs, transform_seq, seed=None,
+                     clip_images=True, clip_min=None, clip_max=None):
     sampler = create_sampler(transform_seq)
     resample_func = transform_seq.application_method
     train, val, test = datasets_tuple
-    train_t = AffineTransformDataset(train, sampler, return_transformation=False, batch_size=batch_size, resample_func=resample_func, seed=seed,clip_data=clip_images,clip_min=clip_min,clip_max=clip_max)
-    val_t = AffineTransformDataset(val, sampler, return_transformation=False, batch_size=batch_size, resample_func=resample_func, seed=seed+1,clip_data=clip_images,clip_min=clip_min,clip_max=clip_max)
-    test_t = AffineTransformDataset(test, sampler, return_transformation=False, batch_size=batch_size, resample_func=resample_func, seed=seed+2,clip_data=clip_images,clip_min=clip_min,clip_max=clip_max)
+    train_t = AffineTransformDataset(train, sampler, return_transformation=False, batch_size=batch_size,
+                                     resample_func=resample_func, seed=seed, clip_data=clip_images, clip_min=clip_min,
+                                     clip_max=clip_max)
+    val_t = AffineTransformDataset(val, sampler, return_transformation=False, batch_size=batch_size,
+                                   resample_func=resample_func, seed=seed + 1, clip_data=clip_images, clip_min=clip_min,
+                                   clip_max=clip_max)
+    test_t = AffineTransformDataset(test, sampler, return_transformation=False, batch_size=batch_size,
+                                    resample_func=resample_func, seed=seed + 2, clip_data=clip_images,
+                                    clip_min=clip_min, clip_max=clip_max)
     train_loader_t = torch.utils.data.DataLoader(train_t, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_t_no_shuffle = torch.utils.data.DataLoader(train_t, batch_size=batch_size, shuffle=False, **dataloader_kwargs)  # Non-shuffled transformed train loader
+    train_loader_t_no_shuffle = torch.utils.data.DataLoader(train_t, batch_size=batch_size, shuffle=False,
+                                                            **dataloader_kwargs)  # Non-shuffled transformed train loader
     val_loader_t = torch.utils.data.DataLoader(val_t, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     test_loader_t = torch.utils.data.DataLoader(test_t, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     shuffle_val_loader_t = torch.utils.data.DataLoader(val_t, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
@@ -130,6 +139,7 @@ def _maybe_transform(datasets_tuple, batch_size, dataset_info, dataloader_kwargs
         "shuffle_val_loader_transformed": shuffle_val_loader_t,
         "train_loader_augmented": train_loader_augmented
     }
+
 
 import torchvision.transforms as transforms
 
@@ -247,9 +257,15 @@ def get_coil100_dataset(path, batch_size=64, dataloader_kwargs=None, dataset_inf
     if dataset_info.resample_method == "adjusted_grid_resample":
         # pass background color through the resample func init inside transformation factory
         extra_affine["resample_func_kwargs"] = {"background_color": background_color}
-    train_loader, train_loader_no_shuffle, val_loader, test_loader, shuffle_val = _build_loaders(dataset_train, dataset_val, dataset_test_pre, batch_size, dataloader_kwargs)
-    transform_seq = get_transformation_sequence_images(name=dataset_info.transform_seq_name, resample_method=dataset_info.resample_method)
-    transformed = _maybe_transform((dataset_train, dataset_val, dataset_test_pre), batch_size, dataset_info, dataloader_kwargs, transform_seq, seed=seed) if transform_seq is not None else {}
+    train_loader, train_loader_no_shuffle, val_loader, test_loader, shuffle_val = _build_loaders(dataset_train,
+                                                                                                 dataset_val,
+                                                                                                 dataset_test_pre,
+                                                                                                 batch_size,
+                                                                                                 dataloader_kwargs)
+    transform_seq = get_transformation_sequence_images(name=dataset_info.transform_seq_name,
+                                                       resample_method=dataset_info.resample_method)
+    transformed = _maybe_transform((dataset_train, dataset_val, dataset_test_pre), batch_size, dataset_info,
+                                   dataloader_kwargs, transform_seq, seed=seed) if transform_seq is not None else {}
     return Box({
         "train_dataset": dataset_train,
         "val_dataset": dataset_val,
@@ -262,7 +278,6 @@ def get_coil100_dataset(path, batch_size=64, dataloader_kwargs=None, dataset_inf
         "n_classes": 100,
         **transformed
     })
-
 
 
 class TransformingDataset(torch.utils.data.Dataset):
@@ -279,6 +294,7 @@ class TransformingDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.dataset)
+
 
 # ----------------------------------------------------
 # Deterministic variant of SamplePoints
@@ -334,6 +350,7 @@ class DeterministicSamplePoints(SamplePoints):
 
         return data
 
+
 # ----------------------------------------------------
 # ModelNet10 Loader
 # ----------------------------------------------------
@@ -356,7 +373,8 @@ def get_modelnet10_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
     data_path = os.path.join(path, "modelnet")
 
     # Load raw ModelNet dataset without pre-scaling
-    train_dataset_pre_val = ModelNet(data_path, '10', True, transform=None, pre_transform=pre_transform, force_reload=False)
+    train_dataset_pre_val = ModelNet(data_path, '10', True, transform=None, pre_transform=pre_transform,
+                                     force_reload=False)
     test_raw = ModelNet(data_path, '10', False, transform=None, pre_transform=pre_transform, force_reload=False)
 
     # Split train/val deterministically
@@ -367,16 +385,20 @@ def get_modelnet10_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
 
     # Wrap datasets using GeometricsDatasetWrapper + TransformingDataset
     dataset_train = GeometricsDatasetWrapper(TransformingDataset(train_raw, transform=pc_transform))
-    dataset_train_no_aug = GeometricsDatasetWrapper(TransformingDataset(train_raw, transform=deterministic_pc_transform))
+    dataset_train_no_aug = GeometricsDatasetWrapper(
+        TransformingDataset(train_raw, transform=deterministic_pc_transform))
     dataset_val = GeometricsDatasetWrapper(TransformingDataset(val_raw, transform=deterministic_pc_transform))
     dataset_test_pre = GeometricsDatasetWrapper(TransformingDataset(test_raw, transform=deterministic_pc_transform))
 
     # DataLoaders
     train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_no_shuffle = torch.utils.data.DataLoader(dataset_train_no_aug, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    train_loader_no_shuffle = torch.utils.data.DataLoader(dataset_train_no_aug, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)
     val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset_test_pre, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
-    shuffle_val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
+    test_loader = torch.utils.data.DataLoader(dataset_test_pre, batch_size=batch_size, shuffle=False,
+                                              **dataloader_kwargs)
+    shuffle_val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=True,
+                                                     **dataloader_kwargs)
 
     transform_seq = get_transformation_sequence_images(
         name=dataset_info.transform_seq_name,
@@ -390,7 +412,6 @@ def get_modelnet10_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
         dataloader_kwargs,
         transform_seq,
         seed=seed,
-
 
     )
 
@@ -429,7 +450,8 @@ def get_modelnet40_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
 
     data_path = os.path.join(path, "modelnet40")
 
-    train_dataset_pre_val = ModelNet(data_path, '40', True, transform=None, pre_transform=pre_transform, force_reload=False)
+    train_dataset_pre_val = ModelNet(data_path, '40', True, transform=None, pre_transform=pre_transform,
+                                     force_reload=False)
     test_raw = ModelNet(data_path, '40', False, transform=None, pre_transform=pre_transform, force_reload=False)
 
     n_train = int(0.9 * len(train_dataset_pre_val))
@@ -439,16 +461,20 @@ def get_modelnet40_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
 
     # Wrap datasets
     dataset_train = GeometricsDatasetWrapper(TransformingDataset(train_raw, transform=pc_transform))
-    dataset_train_no_aug = GeometricsDatasetWrapper(TransformingDataset(train_raw, transform=deterministic_pc_transform))
+    dataset_train_no_aug = GeometricsDatasetWrapper(
+        TransformingDataset(train_raw, transform=deterministic_pc_transform))
     dataset_val = GeometricsDatasetWrapper(TransformingDataset(val_raw, transform=deterministic_pc_transform))
     dataset_test_pre = GeometricsDatasetWrapper(TransformingDataset(test_raw, transform=deterministic_pc_transform))
 
     # DataLoaders
     train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_no_shuffle = torch.utils.data.DataLoader(dataset_train_no_aug, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    train_loader_no_shuffle = torch.utils.data.DataLoader(dataset_train_no_aug, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)
     val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset_test_pre, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
-    shuffle_val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
+    test_loader = torch.utils.data.DataLoader(dataset_test_pre, batch_size=batch_size, shuffle=False,
+                                              **dataloader_kwargs)
+    shuffle_val_loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=True,
+                                                     **dataloader_kwargs)
 
     transform_seq = get_transformation_sequence_images(
         name=dataset_info.transform_seq_name,
@@ -477,15 +503,17 @@ def get_modelnet40_dataset(path, batch_size=32, dataloader_kwargs=None, dataset_
         **transformed
     })
 
+
 class ResizeNormalizeOnly(nn.Module):
     """Custom transform that only resizes and normalizes, skipping center crop."""
+
     def __init__(
-        self,
-        resize_size: int,
-        mean: tuple[float, ...] = (0.485, 0.456, 0.406),
-        std: tuple[float, ...] = (0.229, 0.224, 0.225),
-        interpolation: transforms.InterpolationMode = transforms.InterpolationMode.BILINEAR,
-        antialias: bool = True,
+            self,
+            resize_size: int,
+            mean: tuple[float, ...] = (0.485, 0.456, 0.406),
+            std: tuple[float, ...] = (0.229, 0.224, 0.225),
+            interpolation: transforms.InterpolationMode = transforms.InterpolationMode.BILINEAR,
+            antialias: bool = True,
     ):
         super().__init__()
         self.resize_size = resize_size
@@ -507,7 +535,9 @@ class ResizeNormalizeOnly(nn.Module):
         img = F.normalize(img, mean=self.mean, std=self.std)
         return img
 
-def get_siscore_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_info=None, seed=42, preprocessing_weights="vit"):
+
+def get_siscore_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_info=None, seed=42,
+                        preprocessing_weights="vit"):
     """
     Load ImageNetSubset for train/val/test (90/5/5 split).
     For transformed datasets: test_transformed uses SIScoreDataset, train_transformed and val_transformed are empty.
@@ -534,7 +564,6 @@ def get_siscore_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_in
     # Load ImageNetSubset for regular train/val/test
     imagenet_subset_path = os.path.join(path, "si_score", "imagenet_subset")
 
-
     imagenet_dataset = ImageNetSubset(root=imagenet_subset_path, transform=preprocess_transform)
     if not os.path.isdir(imagenet_subset_path):
         raise RuntimeError(f"ImageNet subset directory not found at {imagenet_subset_path}")
@@ -556,7 +585,8 @@ def get_siscore_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_in
 
     # Create the regular loaders
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_no_shuffle = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    train_loader_no_shuffle = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     shuffle_val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
@@ -573,27 +603,26 @@ def get_siscore_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_in
 
     # Create rotation-only transformation sequence
     transform_seq = get_transformation_sequence_images(
-            name=dataset_info.transform_seq_name,  # "si_score_default" -> rotation only
-            resample_method=dataset_info.resample_method
+        name=dataset_info.transform_seq_name,  # "si_score_default" -> rotation only
+        resample_method=dataset_info.resample_method
     )
 
-
-
-    clip_min = torch.tensor([-2.1179039301310043, -2.0357142857142856,-1.8044444444444445])
+    clip_min = torch.tensor([-2.1179039301310043, -2.0357142857142856, -1.8044444444444445])
     clip_max = torch.tensor([2.2489082969432315, 2.428571428571429, 2.6399999999999997])
 
     # Apply transformations to train/val/test splits
     transformed = _maybe_transform(
-            (train_set, val_set, test_set),
-            batch_size,
-            dataset_info,
-            dataloader_kwargs,
-            transform_seq,
-            seed=seed,
-        clip_images=True,clip_min =clip_min,clip_max=clip_max
+        (train_set, val_set, test_set),
+        batch_size,
+        dataset_info,
+        dataloader_kwargs,
+        transform_seq,
+        seed=seed,
+        clip_images=True, clip_min=clip_min, clip_max=clip_max
     )
 
-    test_loader_transformed = torch.utils.data.DataLoader(siscore_dataset, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    test_loader_transformed = torch.utils.data.DataLoader(siscore_dataset, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)
 
     # Determine number of classes from ImageNet subset
     n_classes = len({label for _, label in imagenet_dataset.samples})
@@ -646,14 +675,17 @@ def get_tu_berlin_dataset(path, batch_size=128, dataloader_kwargs=None, dataset_
         dataset, [n_train, n_val, n_test], generator=torch.Generator().manual_seed(42)
     )
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
-    train_loader_no_shuffle = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    train_loader_no_shuffle = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
+                                                          **dataloader_kwargs)
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     shuffle_val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
     # Transformation sequence for strokes
-    transform_seq = get_transformation_sequence_images(name=dataset_info.transform_seq_name, resample_method=dataset_info.resample_method)
+    transform_seq = get_transformation_sequence_images(name=dataset_info.transform_seq_name,
+                                                       resample_method=dataset_info.resample_method)
     sampler = create_sampler(transform_seq)
-    transformed = _maybe_transform((train_set, val_set, test_set), batch_size, dataset_info, dataloader_kwargs, transform_seq, seed=seed)
+    transformed = _maybe_transform((train_set, val_set, test_set), batch_size, dataset_info, dataloader_kwargs,
+                                   transform_seq, seed=seed)
     return Box({
         "train_dataset": train_set,
         "val_dataset": val_set,
@@ -856,7 +888,8 @@ def get_dataset_info(name):
         })
     raise ValueError(f"Dataset {name} not recognized")
 
-#Helper to get dataaset
+
+# Helper to get dataaset
 def get_dataset(info, path, batch_size=128, dataloader_kwargs=None, seed=42):
     """Load a dataset split bundle for the requested configuration.
 
@@ -872,20 +905,26 @@ def get_dataset(info, path, batch_size=128, dataloader_kwargs=None, seed=42):
     """
     lname = info.name.lower()
     if lname in ["mnist", "rotatedmnist", "rotated_mnist", "biggermnist", "bigger_mnist"]:
-        return get_mnist_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_mnist_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info,
+                                 seed=seed)
     if lname in ["emnist", "biggerextendedmnist", "bigger_emnist", "biggeremnist"]:
-        return get_emnist_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_emnist_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info,
+                                  seed=seed)
     if lname == "coil100":
-        return get_coil100_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_coil100_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info,
+                                   seed=seed)
     if lname in ["modelnet10"]:
-        return get_modelnet10_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_modelnet10_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs,
+                                      dataset_info=info, seed=seed)
     if lname in ["modelnet"]:
-        return get_modelnet40_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_modelnet40_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs,
+                                      dataset_info=info, seed=seed)
     if lname == "si_score":
         # Default: ViT preprocessing
         return get_siscore_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info)
     if lname == "si_score_resnet":
-        return get_siscore_dataset_resnet(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info)
+        return get_siscore_dataset_resnet(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs,
+                                          dataset_info=info)
     if lname == "si_score_resnet_no_crop":
         return get_siscore_dataset(
             path,
@@ -903,10 +942,12 @@ def get_dataset(info, path, batch_size=128, dataloader_kwargs=None, seed=42):
             preprocessing_weights="vit_no_crop"
         )
     if lname == "tu_berlin":
-        return get_tu_berlin_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs, dataset_info=info, seed=seed)
+        return get_tu_berlin_dataset(path, batch_size=batch_size, dataloader_kwargs=dataloader_kwargs,
+                                     dataset_info=info, seed=seed)
     raise ValueError(f"Dataset {info.name} not recognized")
 
-#helper to get config of embedding cache which defines reduction methods.
+
+# helper to get config of embedding cache which defines reduction methods.
 def get_layer_embedding_cache_config(dataset: str,
                                      architecture: str,
                                      transform_name: str = None,
@@ -932,14 +973,15 @@ def get_layer_embedding_cache_config(dataset: str,
             dim = 2048
         elif name in ["modelnet", "modelnet10", "modelnet40"]:
             dim = 2048
-        elif name in ["si_score", "siscore", "si-score","si_score_resnet",
-                        "si_score_resnet_no_crop","si_score_vit_no_crop"]:
+        elif name in ["si_score", "siscore", "si-score", "si_score_resnet",
+                      "si_score_resnet_no_crop", "si_score_vit_no_crop"]:
             dim = 4096
         elif name in ["tu_berlin", "tu_berlin"]:
             dim = 1024
         else:
             dim = 2048  # safe default
-            raise Exception(f"Dataset {name} not recognized for default embedding cache dim; please provide dim_override")
+            raise Exception(
+                f"Dataset {name} not recognized for default embedding cache dim; please provide dim_override")
 
     # Build cache name containing the dimension
     safe_arch = architecture.replace(" ", "_") if architecture else "arch"
@@ -952,44 +994,40 @@ def get_layer_embedding_cache_config(dataset: str,
     if dtype == "pointcloud" or name.startswith("modelnet"):
         reducer_names = ["rp"]
         reducer_kwargs = [{"n_components": dim, "method": "gaussian"}]
-        reducer_dim_threshold = [(dim+1, None)]
+        reducer_dim_threshold = [(dim + 1, None)]
 
-    elif dtype =="stroke" or name in ["tu_berlin",]:
+    elif dtype == "stroke" or name in ["tu_berlin", ]:
         # Strokes / TU Berlin
-        reducer_names = ["rp",]
+        reducer_names = ["rp", ]
         reducer_kwargs = [
             {"n_components": dim, "method": "gaussian"},
         ]
         reducer_dim_threshold = [
-            (dim+1, 20000),
+            (dim + 1, 20000),
         ]
     else:
         # Images / strokes
         if "vit" in arch:
-            reducer_names = ["token_pool",]
+            reducer_names = ["token_pool", ]
             reducer_kwargs = [
                 {"method": "cls"},  # token_pool params: return CLS + mean of patches (adjustable)
             ]
             reducer_dim_threshold = [
-                (dim+1, None),    # token-based extractor takes priority
+                (dim + 1, None),  # token-based extractor takes priority
             ]
         else:
-            reducer_names = ["image_transform", "collapse_image", "rp",]
+            reducer_names = ["image_transform", "collapse_image", "rp", ]
             reducer_kwargs = [
                 {"reduce_dims": (3, 3), "rp_dim": dim, "average_pool": True},
                 {},  # collapse_image: no params (global avg over H,W)
                 {"n_components": dim, "method": "gaussian"},
             ]
 
-
             reducer_dim_threshold = [
-                (dim+1, None),   # image_transform for small->medium features
-                (dim+1, None),   # collapse_image (no params) - available as an alternative
-                (dim+1, 20000),  # rp fallback
+                (dim + 1, None),  # image_transform for small->medium features
+                (dim + 1, None),  # collapse_image (no params) - available as an alternative
+                (dim + 1, 20000),  # rp fallback
             ]
-
-
-
 
     reducer_fit_batches = 0
 
@@ -1003,8 +1041,7 @@ def get_layer_embedding_cache_config(dataset: str,
     })
 
 
-
-#method to create the cache.
+# method to create the cache.
 def create_layer_embedding_cache(model,
                                  train_loader_no_shuffle,
                                  cache_config,

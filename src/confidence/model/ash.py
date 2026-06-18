@@ -1,8 +1,9 @@
+import torch
+
+from confidence.base_confidence import ConfidenceModule
 from confidence.direct.logit_based import EnergyConfidence
 from confidence.model.base_model import ModelBasedConfidence
-from pytorch_ood.detector import ASH
-import torch
-from confidence.base_confidence import ConfidenceModule
+
 
 class ASHConfidence(ModelBasedConfidence):
     """
@@ -21,16 +22,18 @@ class ASHConfidence(ModelBasedConfidence):
     Returns:
         Tuple (confidences, selected_logits)
     """
+
     def __init__(
-        self,
-        backbone: torch.nn.Module,
-        head: torch.nn.Module,
-        variant: str = "ash-s",
-        percentile: float = 0.90,
-        index_feat: int = None,
-        index_logits: int = None,
-        confidence: ConfidenceModule = EnergyConfidence(),
-        use_feature_confidence: bool = False,  # calculates distance on ash features before passing them through the head
+            self,
+            backbone: torch.nn.Module,
+            head: torch.nn.Module,
+            variant: str = "ash-s",
+            percentile: float = 0.90,
+            index_feat: int = None,
+            index_logits: int = None,
+            confidence: ConfidenceModule = EnergyConfidence(),
+            use_feature_confidence: bool = False,
+            # calculates distance on ash features before passing them through the head
     ):
         # confidence and index for final logits
         super().__init__(head, confidence, index_logits)
@@ -97,23 +100,21 @@ class ASHConfidence(ModelBasedConfidence):
         return confidences, output
 
 
-
-
-
 import torch
 from math import floor, ceil
 from confidence.direct.logit_based import EnergyConfidence
 from confidence.model.base_model import ModelBasedConfidence
 from confidence.base_confidence import ConfidenceModule
 
+
 def torch_quantile(  # noqa: PLR0913 (too many arguments)
-    tensor: torch.Tensor,
-    q: float | torch.Tensor,
-    dim: int | None = None,
-    *,
-    keepdim: bool = False,
-    interpolation: str = "linear",
-    out: torch.Tensor | None = None,
+        tensor: torch.Tensor,
+        q: float | torch.Tensor,
+        dim: int | None = None,
+        *,
+        keepdim: bool = False,
+        interpolation: str = "linear",
+        out: torch.Tensor | None = None,
 ) -> torch.Tensor:
     r"""Improved ``torch.quantile`` for one scalar quantile.
 
@@ -192,6 +193,7 @@ def torch_quantile(  # noqa: PLR0913 (too many arguments)
         return out
     return out.squeeze() if dim_was_none else out.squeeze(dim)
 
+
 class ReActConfidence(ModelBasedConfidence):
     """
     Wraps a backbone+head with ReAct activation clipping.
@@ -199,32 +201,33 @@ class ReActConfidence(ModelBasedConfidence):
 
     Returns (confidences, selected_logits).
     """
+
     def __init__(
-        self,
-        backbone: torch.nn.Module,
-        head: torch.nn.Module,
-        percentile: float = 0.9,
-        index_feat: int = None,
-        index_logits: int = None,
-        confidence: ConfidenceModule = EnergyConfidence(),
-        use_feature_confidence: bool = False,
-        threshold: float = None,
+            self,
+            backbone: torch.nn.Module,
+            head: torch.nn.Module,
+            percentile: float = 0.9,
+            index_feat: int = None,
+            index_logits: int = None,
+            confidence: ConfidenceModule = EnergyConfidence(),
+            use_feature_confidence: bool = False,
+            threshold: float = None,
     ):
         super().__init__(head, confidence, index_logits)
         self.backbone = backbone
         self.percentile = percentile
         self.index_feat = index_feat
         self.head = head
-        self.threshold = threshold # to be computed in fit() or passed directly
+        self.threshold = threshold  # to be computed in fit() or passed directly
         self.use_feature_confidence = use_feature_confidence
 
     def fit(self, features: torch.Tensor):
         """
         Calculates the clipping threshold based on the given percentile of activations.
         """
-        #note that quantile is heavy operation; consider using a subset of features
+        # note that quantile is heavy operation; consider using a subset of features
         if self.threshold is not None:
-            return # Do not re-compute if already set
+            return  # Do not re-compute if already set
 
         self.threshold = torch_quantile(features, self.percentile)
 
@@ -234,7 +237,7 @@ class ReActConfidence(ModelBasedConfidence):
 
         # 1) backbone
         all_feat = self.backbone(x)
-        
+
         # Ensure all_feat is a mutable list if it's a tuple
         is_tuple = isinstance(all_feat, tuple)
         if is_tuple:
@@ -245,7 +248,7 @@ class ReActConfidence(ModelBasedConfidence):
             feats = all_feat[self.index_feat]
         else:
             feats = all_feat
-            
+
         # 3) clip activations
         self.threshold = self.threshold.to(feats.device)
         react_feat = feats.clamp(max=self.threshold)
@@ -261,7 +264,7 @@ class ReActConfidence(ModelBasedConfidence):
 
         # 5) confidences
         if self.use_feature_confidence:
-            confidences,logits = self.confidence(react_feat, y)
+            confidences, logits = self.confidence(react_feat, y)
         else:
             logits = self.head(react_feat)
             confidences = self.confidence(logits, y)
@@ -269,19 +272,20 @@ class ReActConfidence(ModelBasedConfidence):
         # select logits if index_logits set
         index_logit_overide = self.index
 
-        output = logits if index_logit_overide is None else head_input[index_logit_overide] #either take the rectifeid output or assume that the module also outputs its logits
+        output = logits if index_logit_overide is None else head_input[
+            index_logit_overide]  # either take the rectifeid output or assume that the module also outputs its logits
         return confidences, output
 
 
-#compare against ASH from pytorch OOD. #TODO: move react to separate file
+# compare against ASH from pytorch OOD. #TODO: move react to separate file
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from confidence.direct.logit_based import EnergyConfidence
-from confidence.base_confidence import ConfidenceModule
 
 from pytorch_ood.detector import ASH  # for reference/comparison
+
 
 # -------------------------------
 # Dummy dataset for testing
@@ -290,6 +294,7 @@ def create_dummy_data(num_samples=1000, num_features=10, num_classes=5):
     X = torch.randn(num_samples, num_features)
     y = torch.randint(0, num_classes, (num_samples,))
     return X, y
+
 
 # -------------------------------
 # Dummy model backbone and head
@@ -305,6 +310,7 @@ class SimpleBackbone(nn.Module):
         x = F.gelu(self.fc2(x))
         return x  # features
 
+
 class SimpleHead(nn.Module):
     def __init__(self, feature_dim=20, num_classes=5):
         super().__init__()
@@ -313,7 +319,9 @@ class SimpleHead(nn.Module):
     def forward(self, x):
         return self.fc(x)  # logits
 
+
 from pytorch_ood.detector import ReAct
+
 
 # -------------------------------
 # Main comparison
@@ -337,7 +345,7 @@ def main():
     all_features = backbone(X)
     react_conf.fit(all_features)
 
-    react_ood = ReAct(backbone, head,threshold=react_conf.threshold.item(),detector=energy_conf)
+    react_ood = ReAct(backbone, head, threshold=react_conf.threshold.item(), detector=energy_conf)
 
     # Evaluation loop
     for batch_X, batch_y in dataloader:
@@ -353,6 +361,7 @@ def main():
         mean_dif = torch.abs(react_confidences - react_ood_conf).mean().item()
         print(f"Mean absolute difference between ReActConfidence and ReAct OOD scores: {mean_dif:.6f}")
         break  # just first batch for demo
+
 
 if __name__ == "__main__":
     main()

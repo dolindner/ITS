@@ -35,7 +35,6 @@ class EntropyConfidence(ConfidenceModule):
         return -entropy
 
 
-
 class MaximumSoftmaxConfidence(ConfidenceModule):
     """
     This class takes the maximum softmax probability over the classes as the confidence score.
@@ -65,6 +64,7 @@ class MaximumSoftmaxConfidence(ConfidenceModule):
         # Compute maximum softmax confidence
         max_softmax_confidence = torch.max(probs, dim=-1)[0]
         return max_softmax_confidence
+
 
 class DifferentiableMaximumSoftmaxConfidence(ConfidenceModule):
     """
@@ -134,6 +134,7 @@ class GeneralizedEntropyConfidence(ConfidenceModule):
         m: number of top classes to consider. If None, use all classes.
         input_logits: if True, inputs are logits and will be softmaxed.
     """
+
     def __init__(self, lmbda: float = 1.0, m: int = None, input_logits: bool = False):
         super(GeneralizedEntropyConfidence, self).__init__()
         self.lmbda = float(lmbda)
@@ -192,7 +193,8 @@ class CombinedEntropyMultiSampleConfidence(ConfidenceModule):
         """
         super().__init__()
         if input_logits:
-            raise NotImplementedError("input_logits=True is not supported for CombinedEntropyMultiSampleConfidence yet.")
+            raise NotImplementedError(
+                "input_logits=True is not supported for CombinedEntropyMultiSampleConfidence yet.")
         self.multi_sample_confidence = multi_sample_confidence
         self.entropy_confidence = EntropyConfidence(input_logits=False)
         self.alpha = alpha

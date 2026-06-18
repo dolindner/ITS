@@ -1,5 +1,7 @@
-import torch
 import math
+
+import torch
+
 from src.utils.transforms.base import Transform
 
 
@@ -33,6 +35,7 @@ def _generate_orbit_samples(low: torch.Tensor, high: torch.Tensor, n_samples: in
         if shift != 0:
             orbit = orbit + shift * (2 * (high - low) / n_samples)
         return orbit
+
 
 class PeriodicTransform(Transform):
     """Base class for transforms_old with periodic parameters (e.g. angles).
@@ -118,7 +121,6 @@ class PeriodicTransform(Transform):
                 wrapped
             )
 
-
             span_domain = u_mod - lower_bounds
             period_domain = 2 * span_domain
 
@@ -138,18 +140,16 @@ class PeriodicTransform(Transform):
         else:
             inside = (wrapped >= lower_bounds) & (wrapped <= upper_bounds)
 
-            #ivert where lower_bounds is larger than upper_bounds
+            # ivert where lower_bounds is larger than upper_bounds
             invert = lower_bounds > upper_bounds
-            inside2= (wrapped >= lower_bounds) | (wrapped <= upper_bounds)
+            inside2 = (wrapped >= lower_bounds) | (wrapped <= upper_bounds)
             inside = torch.where(invert, inside2, inside)
-
 
             diff_l = torch.abs(wrapped - lower_bounds)
             diff_u = torch.abs(wrapped - upper_bounds)
 
             dist_l = torch.minimum(diff_l, span_interval - diff_l)
             dist_u = torch.minimum(diff_u, span_interval - diff_u)
-
 
             clamp_to_lower = dist_l < dist_u
 
@@ -159,8 +159,6 @@ class PeriodicTransform(Transform):
                 torch.where(clamp_to_lower, lower_bounds, upper_bounds)
             )
             return proj
-
-
 
     def orbit(self, n_samples: int, domain=2 * math.pi, dim: int = 0, extend: int = 0, shift: int = 0) -> torch.Tensor:
         """Generate an orbit of parameters, supporting wrapped domains where lower > upper."""
@@ -196,11 +194,11 @@ class PeriodicTransform(Transform):
         span_interval = period
         wrapped = torch.remainder(samples - interval_low, span_interval) + interval_low
         params[:, dim] = wrapped
-        #due to rounding this may have set some samples slightly outside the domain bounds; reproject
+        # due to rounding this may have set some samples slightly outside the domain bounds; reproject
         params = self.project_parameters(params, domain, reflect=False)
         return params
 
-    def sample_param(self,batch_size,domain,device="cpu",dtype=torch.float32) -> torch.Tensor:
+    def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         """
         Sample a batch of parameters from the periodic transform's domain.
         This method generates random parameters within the specified domain.
@@ -275,19 +273,23 @@ if __name__ == '__main__':
     import math
     import torch
 
+
     class DummyPeriodic(PeriodicTransform):
         def matrix(self, param: torch.Tensor) -> torch.Tensor:
             # Dummy implementation for testing
             return param
+
         def param_size(self):
             return 1
+
         def interval(self):
             # CHANGED: return plain floats to avoid tensor shape issues
             return -1.0, 1.0
 
+
     tp = DummyPeriodic()
 
-    #now we have a domain over the interval from 0.9 to -0.9
+    # now we have a domain over the interval from 0.9 to -0.9
     values = [-0.125, 0.125, -1.125, 1.05]
     domain = [0.9, -0.9]
     for reflect in (False, True):
@@ -297,22 +299,20 @@ if __name__ == '__main__':
             y = tp.project_parameters(x, domain=domain, reflect=reflect)
             print(f" value={v: .2f} → projected = {y.item(): .2f}")
 
-
-    values = [-0.125,0.125,-1.125,1.125]
+    values = [-0.125, 0.125, -1.125, 1.125]
     domain = [-0.1, 0.1]
     expected = [-0.075, 0.075, 0.075, -0.075]
 
-
     for reflect in (False, True):
         print(f"\nTesting with reflect={reflect}")
-        for i,v in enumerate(values):
+        for i, v in enumerate(values):
             x = torch.tensor([v], dtype=torch.float32)
             y = tp.project_parameters(x, domain=domain, reflect=reflect)
             if reflect:
-                assert torch.allclose(y, torch.ones_like(y)*expected[i], atol=1e-6), f"Reflection failed: {y} != {expected[i]}"
+                assert torch.allclose(y, torch.ones_like(y) * expected[i],
+                                      atol=1e-6), f"Reflection failed: {y} != {expected[i]}"
 
-
-    values = [-0.125,0.125,-1.125,1.125]
+    values = [-0.125, 0.125, -1.125, 1.125]
     domain = [-2, 2]
     for reflect in (False, True):
         print(f"\nTesting with reflect={reflect}")
@@ -324,7 +324,7 @@ if __name__ == '__main__':
     wrap_domain = [0.9, -0.9]
     orb = tp.orbit(n_samples=9, domain=wrap_domain, dim=0)
     inside = (orb[:, 0] >= wrap_domain[0]) | (orb[:, 0] <= wrap_domain[1])
-    assert inside.all(), f"Orbit produced out-of-domain samples for wrapped domain: {orb[:,0]}"
+    assert inside.all(), f"Orbit produced out-of-domain samples for wrapped domain: {orb[:, 0]}"
     # Ensure coverage of arc endpoints
     assert (orb[:, 0] >= 0.9).any() and (orb[:, 0] <= -0.9).any(), "Wrapped arc endpoints missing in orbit."
 

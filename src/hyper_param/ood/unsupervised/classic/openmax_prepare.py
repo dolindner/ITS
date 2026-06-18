@@ -1,12 +1,14 @@
 from typing import Dict, Any
+
 import optuna
 
+from confidence.control.classify import ClassifyingConfidence
+from confidence.model.single_pass import SinglePassConfidence
+from confidence.unsupervised.classic.openmax import OpenMaxConfidence
 from hyper_param.ood.base_prepare import OOD_DEFAULT_PARAM_FACTORIES, OOD_PARAM_SAMPLERS, OOD_PROBLEM_FACTORIES
 from model.get_model import get_network_layer
 from src.utils.transformation_problem import TransformationProblem
-from confidence.model.single_pass import SinglePassConfidence
-from confidence.control.classify import ClassifyingConfidence
-from confidence.unsupervised.classic.openmax import OpenMaxConfidence
+
 
 # --- OpenMax ---
 
@@ -19,7 +21,9 @@ def default_openmax_params(train_cache=None, dataset_info=None, architecture=Non
         "reducer_name": None,
     }
 
-def sample_openmax_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
+
+def sample_openmax_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> \
+Dict[str, Any]:
     tail_size = trial.suggest_int("tail_size", 5, 50)
     alpha = trial.suggest_int("alpha", 1, 20)
     euclid_weight = trial.suggest_float("euclid_weight", 0.0, 1.0)
@@ -31,7 +35,9 @@ def sample_openmax_params(trial: optuna.Trial, train_cache=None, dataset_info=No
         "reducer_name": None,
     }
 
-def create_openmax_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_openmax_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture,
+                           **kwargs) -> TransformationProblem:
     layer_index = params.get("layer_index", -1)
     reducer_name = params.get("reducer_name", None)
 

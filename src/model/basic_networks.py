@@ -2,12 +2,11 @@ import math
 
 import torch
 import torch.nn as nn
-from escnn import nn as escnn_nn
 from escnn import gspaces
-
-from .rot_resnet import ESCNNFlexibleResNet
+from escnn import nn as escnn_nn
 
 from model.pointnet_plus import SAModule
+from .rot_resnet import ESCNNFlexibleResNet
 
 
 class BasicBlock(nn.Module):
@@ -24,9 +23,9 @@ class BasicBlock(nn.Module):
         """
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1, bias=False)
-        self.bn1   = nn.BatchNorm2d(out_ch)
+        self.bn1 = nn.BatchNorm2d(out_ch)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False)
-        self.bn2   = nn.BatchNorm2d(out_ch)
+        self.bn2 = nn.BatchNorm2d(out_ch)
 
         self.proj = None
         if stride != 1 or in_ch != out_ch:
@@ -41,6 +40,7 @@ class BasicBlock(nn.Module):
         y = self.bn2(self.conv2(y))
         shortcut = x if self.proj is None else self.proj(x)
         return self.act(y + shortcut)
+
 
 class FlexibleResNet(nn.Module):
     def __init__(self, channels, blocks_per_stage, num_classes=10, in_channels=1, activation=nn.ReLU, stem_stride=1):
@@ -60,8 +60,8 @@ class FlexibleResNet(nn.Module):
         if len(channels) != len(blocks_per_stage):
             raise ValueError("channels and blocks_per_stage must have same length")
         self.stem_conv = nn.Conv2d(in_channels, channels[0], 3, stride=stem_stride, padding=1, bias=False)  # changed
-        self.stem_bn   = nn.BatchNorm2d(channels[0])
-        self.stem_act  = activation()
+        self.stem_bn = nn.BatchNorm2d(channels[0])
+        self.stem_act = activation()
 
         stages = []
         in_ch = channels[0]
@@ -69,7 +69,7 @@ class FlexibleResNet(nn.Module):
             stride = 1 if idx == 0 else 2
             blocks = [BasicBlock(in_ch, out_ch, stride=stride, activation=activation)]
             in_ch = out_ch
-            for _ in range(n-1):
+            for _ in range(n - 1):
                 blocks.append(BasicBlock(in_ch, in_ch, stride=1, activation=activation))
             stages.append(nn.Sequential(*blocks))
         self.stages = nn.ModuleList(stages)
@@ -126,8 +126,6 @@ def convert_flexible_resnet_to_sequential(model: FlexibleResNet) -> nn.Sequentia
     return nn.Sequential(*layers)
 
 
-
-
 class ToGeometric(nn.Module):
     """
     Wraps a tensor in a GeometricTensor with the specified field type.
@@ -137,17 +135,20 @@ class ToGeometric(nn.Module):
     def __init__(self, field_type: escnn_nn.FieldType):
         super().__init__()
         self.field_type = field_type
+
     def forward(self, x: torch.Tensor):
         if isinstance(x, escnn_nn.GeometricTensor):
             return x  # already geometric
         return escnn_nn.GeometricTensor(x, self.field_type)
 
+
 class FromGeometric(nn.Module):
     def forward(self, x):
         return x.tensor if isinstance(x, escnn_nn.GeometricTensor) else x
 
+
 class P4CNN(nn.Module):
-    def __init__(self, num_classes=10,activation=escnn_nn.ReLU):
+    def __init__(self, num_classes=10, activation=escnn_nn.ReLU):
         super().__init__()
         r2_act = gspaces.rot2dOnR2(N=8)
 
@@ -181,13 +182,14 @@ class P4CNN(nn.Module):
         x = self.act(self.bn2(self.conv2(x)))
         x = self.pool2(x)
         x = self.act(self.bn3(self.conv3(x)))
-        x = self.gpool(x)              # GeometricTensor with trivial reps
+        x = self.gpool(x)  # GeometricTensor with trivial reps
         x = x.tensor.view(x.tensor.size(0), -1)  # (B,20)
         x = torch.relu(self.fc1(x))
         x = self.dropout(x)
         return self.fc2(x)
 
-def get_flexible_resnet_layer_mapping(blocks_per_stage,stages):
+
+def get_flexible_resnet_layer_mapping(blocks_per_stage, stages):
     """
     Generate layer mapping for FlexibleResNet based on its structure.
     Index 0 is always the final classifier 'fc'.
@@ -202,9 +204,9 @@ def get_flexible_resnet_layer_mapping(blocks_per_stage,stages):
     if isinstance(blocks_per_stage, int):
         # If uniform blocks, we need to know how many stages - assume 3 stages for common cases
         blocks_per_stage = [blocks_per_stage] * stages
-    
+
     mapping = {0: ("fc", "input")}
-    
+
     index = 1
     # Go through stages in reverse order (last stage first)
     for stage_idx in reversed(range(len(blocks_per_stage))):
@@ -214,7 +216,7 @@ def get_flexible_resnet_layer_mapping(blocks_per_stage,stages):
             layer_name = f"stages.{stage_idx}.{block_idx}.act"
             mapping[index] = (layer_name, "input")
             index += 1
-    
+
     return mapping
 
 
@@ -359,7 +361,8 @@ def get_encoder_for_resnet(model, dim=512, vae=False):
 
     return encoder_model, decoder
 
-def make_deterministic(model,random=False,verbose=True):
+
+def make_deterministic(model, random=False, verbose=True):
     """
     Disables randomness for SAModule
     """
@@ -383,6 +386,7 @@ class PreActBlock(nn.Module):
     Wraps a BasicBlock to return the pre-activation sum (y + shortcut)
     i.e. omits the final self.act(...) so a downstream head can apply it.
     """
+
     def __init__(self, block: BasicBlock):
         super().__init__()
         # reuse convolutional / BN / proj modules from the original block
@@ -399,6 +403,7 @@ class PreActBlock(nn.Module):
         y = self.bn2(self.conv2(y))
         shortcut = x if self.proj is None else self.proj(x)
         return y + shortcut
+
 
 def split_flexible_resnet_for_ash(model, split_pos=0):
     """
@@ -465,6 +470,7 @@ def get_max_split_pos_for_flexible_resnet(model):
         raise ValueError("Model must be an instance of FlexibleResNet")
     return len(model.stages) + 1
 
+
 def compare_model_and_split(model: FlexibleResNet, split_pos: int, atol=1e-6, rtol=1e-5):
     model.eval()
     backbone, head = split_flexible_resnet_for_ash(model, split_pos)
@@ -491,13 +497,12 @@ def compare_model_and_split(model: FlexibleResNet, split_pos: int, atol=1e-6, rt
     return True, 0.0
 
 
-
 def convert_flexible_resnet_to_gcnn(
-    model: FlexibleResNet,
-    num_rotations: int = 8,
-    reflection: bool = False,
-    activation=torch.nn.GELU,
-    enable_auto_padding: bool = False
+        model: FlexibleResNet,
+        num_rotations: int = 8,
+        reflection: bool = False,
+        activation=torch.nn.GELU,
+        enable_auto_padding: bool = False
 ) -> 'GroupResNet':
     """
     Converts a FlexibleResNet model to a GroupResNet with matching architecture.
@@ -551,7 +556,7 @@ def convert_flexible_resnet_to_gcnn(
         num_rotations=num_rotations,
         use_reflection=reflection,
         stem_stride=stem_stride,
-        pad_blocks = enable_auto_padding
+        pad_blocks=enable_auto_padding
     )
 
 
@@ -624,15 +629,14 @@ def convert_flexible_resnet_to_escnn(
         if max_frequency is None:
             max_frequency = rotations // 2
 
-
-        scale_factor = 11/9
+        scale_factor = 11 / 9
         if reflection:
             scale_factor *= math.sqrt(2)
     else:
         # Discrete groups: regular representation
         group_size = 2 * rotations if reflection else rotations
 
-        scale_factor = 1.222222222/math.sqrt(group_size)
+        scale_factor = 1.222222222 / math.sqrt(group_size)
 
     scaled_channels = [max(1, int(ch * scale_factor)) for ch in stage_channels]
 
@@ -650,6 +654,7 @@ def convert_flexible_resnet_to_escnn(
         pad_input=pad_input
     )
 
+
 def count_parameters(model: nn.Module) -> int:
     """Count the number of trainable parameters in a model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -657,9 +662,9 @@ def count_parameters(model: nn.Module) -> int:
 
 def tet_conversion_parameter_counts():
     """Test that converted models have approximately the same parameter count."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Testing parameter counts for model conversions")
-    print("="*80)
+    print("=" * 80)
 
     # Create base FlexibleResNet
     base_channels = [64, 128]
@@ -677,9 +682,9 @@ def tet_conversion_parameter_counts():
     print(f"\nBase FlexibleResNet parameters: {base_params:,}")
 
     # Test GroupResNet conversions
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("GroupResNet conversions:")
-    print("-"*80)
+    print("-" * 80)
 
     for num_rotations in [4, 8]:
         for reflection in [False, True]:
@@ -694,9 +699,9 @@ def tet_conversion_parameter_counts():
             print(f"{group_type} N={num_rotations}: {gcnn_params:,} params (ratio: {ratio:.3f})")
 
     # Test ESCNN conversions
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("ESCNN conversions (discrete):")
-    print("-"*80)
+    print("-" * 80)
 
     for rotations in [4, 8]:
         for reflection in [False, True]:
@@ -712,9 +717,9 @@ def tet_conversion_parameter_counts():
             print(f"{group_type}{rotations}: {escnn_params:,} params (ratio: {ratio:.3f})")
 
     # Test ESCNN continuous conversions
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("ESCNN conversions (continuous):")
-    print("-"*80)
+    print("-" * 80)
 
     for max_freq in [3, 5, 8]:
         for reflection in [False, True]:
@@ -734,27 +739,23 @@ def tet_conversion_parameter_counts():
 if __name__ == "__main__":
     # Existing split tests
     model2 = FlexibleResNet(
-        channels=[32, 64, 128,256],
-        blocks_per_stage=[2, 2, 2,2],
+        channels=[32, 64, 128, 256],
+        blocks_per_stage=[2, 2, 2, 2],
         num_classes=10,
         in_channels=1,
         activation=nn.GELU,
         stem_stride=1
     )
 
-
-
     model_escnn = convert_flexible_resnet_to_escnn(model2).to("cuda")
     model_gcnn = convert_flexible_resnet_to_gcnn(model2).to("cuda")
 
-
-
-
     import time
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    x =torch.randn(64,1,32,32).to("cuda")
-    y = torch.randint(0,10,(64,)).to("cuda")
+    x = torch.randn(64, 1, 32, 32).to("cuda")
+    y = torch.randint(0, 10, (64,)).to("cuda")
     model2.eval().to(device)
     start_time = time.time()
     for _ in range(1000):
@@ -772,4 +773,3 @@ if __name__ == "__main__":
         torch.cuda.synchronize()  # Ensure all CUDA operations are complete
     end_time = time.time()
     print(f"Average inference time over 100 runs: {(end_time - start_time) / 1000:.6f} seconds")
-

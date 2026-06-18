@@ -7,10 +7,12 @@ import weakref
 import torch
 import torch.nn as nn
 
+
 class ModelInputOutputWrapper(nn.Module):
     """
     Wrapper for a PyTorch model to output both the last layer and multiple intermediate layers input, output, or both.
     """
+
     def __init__(self,
                  model,
                  target_layer_names,
@@ -39,7 +41,7 @@ class ModelInputOutputWrapper(nn.Module):
         super(ModelInputOutputWrapper, self).__init__()
         self.model = model
         self.flatten = flatten
-        self.concat= concat
+        self.concat = concat
         self.output_tuple = True
         self.return_final = return_final
         self.return_y = return_y
@@ -72,7 +74,7 @@ class ModelInputOutputWrapper(nn.Module):
         self._register_hooks()
 
     def _register_hooks(self):
-        #Use weak ref to break cycles: module -> hook fn -> self -> model -> module. Allows GC.
+        # Use weak ref to break cycles: module -> hook fn -> self -> model -> module. Allows GC.
         weak_self = weakref.ref(self)
 
         def create_hook_input(weak_self, layername, entry_idx):
@@ -81,6 +83,7 @@ class ModelInputOutputWrapper(nn.Module):
                 if s is None:
                     return
                 s.target_layer_inputs[layername] = inputs[entry_idx]
+
             return hook_fn
 
         def create_hook_output(weak_self, layername):
@@ -89,6 +92,7 @@ class ModelInputOutputWrapper(nn.Module):
                 if s is None:
                     return
                 s.target_layer_outputs[layername] = outputs
+
             return hook_fn
 
         found_layers = set()
@@ -114,7 +118,6 @@ class ModelInputOutputWrapper(nn.Module):
         if len(set(self.target_layer_names)) != len(set(found_layers)):
             missing = set(self.target_layer_names) - found_layers
             raise ValueError(f"Layers {missing} not found in model")
-
 
     def forward(self, x, y=None):
         """
@@ -186,7 +189,6 @@ class ModelInputOutputWrapper(nn.Module):
             self.target_layer_inputs.clear()
             self.target_layer_outputs.clear()
 
-
         return ret
 
     def clear(self):
@@ -215,11 +217,14 @@ class ModelInputOutputWrapper(nn.Module):
     def __exit__(self, exc_type, exc, tb):
         self.remove_hooks()
         return False
+
+
 class ModelInputOutputWrapperOnDemand(nn.Module):
     """
     On-demand wrapper for a PyTorch model to output both the last layer and multiple intermediate layers input, output, or both.
     Hooks are registered only during forward and removed immediately after.
     """
+
     def __init__(self,
                  model,
                  target_layer_names,
@@ -279,6 +284,7 @@ class ModelInputOutputWrapperOnDemand(nn.Module):
                 if s is None:
                     return
                 target_layer_inputs[layername] = inputs[entry_idx]
+
             return hook_fn
 
         def create_hook_output(weak_self, layername):
@@ -287,6 +293,7 @@ class ModelInputOutputWrapperOnDemand(nn.Module):
                 if s is None:
                     return
                 target_layer_outputs[layername] = outputs
+
             return hook_fn
 
         found_layers = set()
@@ -356,7 +363,6 @@ class ModelInputOutputWrapperOnDemand(nn.Module):
                 else:
                     embeddings = outputs_list
 
-
             if self.return_final and self.return_y:
                 ret = (embeddings, final_output, y)
             elif self.return_final:
@@ -376,6 +382,7 @@ class ModelInputOutputWrapperOnDemand(nn.Module):
 
         return ret
 
+
 if __name__ == '__main__':
     import time
 
@@ -383,7 +390,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if not torch.cuda.is_available():
         print("CUDA not available; benchmarking on CPU.")
-    
+
     # Bigger model: ResNet18
     model = torch.nn.Sequential(
         torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
@@ -391,7 +398,7 @@ if __name__ == '__main__':
         torch.nn.ReLU(inplace=True),
         torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
     )
-    
+
     # Bigger batch size: 32, with input shape for ResNet (3, 224, 224)
     x = torch.randn(32, 3, 224, 224).to(device)
 

@@ -1,9 +1,12 @@
 from typing import Dict, Any
+
 import optuna
 import torch
 from tqdm import tqdm
 
 from confidence.direct.logit_based import EnergyConfidence
+from confidence.direct.prob_based import EntropyConfidence
+from confidence.model.ash import ReActConfidence
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
@@ -12,8 +15,6 @@ from hyper_param.ood.base_prepare import (
 from model.basic_networks import get_max_split_pos_for_flexible_resnet, split_flexible_resnet_for_ash
 from src.utils.transformation_problem import TransformationProblem
 
-from confidence.model.ash import ReActConfidence
-from confidence.direct.prob_based import EntropyConfidence
 
 def default_react_all_params() -> Dict[str, Any]:
     """Default parameters for ReAct All. The percentile of 0.9 is from the paper."""
@@ -22,8 +23,9 @@ def default_react_all_params() -> Dict[str, Any]:
         "confidence_type": "energy",
         "use_feature_confidence": False,
         "split_pos": 0,
-        "threshold": None, # if set, percentile is ignored
+        "threshold": None,  # if set, percentile is ignored
     }
+
 
 def sample_react_all_params(trial: optuna.Trial, train_cache=None, architecture=None, **kwargs) -> Dict[str, Any]:
     """Sample hyperparameters for ReAct All."""
@@ -38,14 +40,15 @@ def sample_react_all_params(trial: optuna.Trial, train_cache=None, architecture=
 
     return params
 
+
 def create_react_all_problem(
-    params: Dict[str, Any],
-    model,
-    train_cache,
-    transform_seq,
-    dataset_info,
-    architecture,
-    **kwargs
+        params: Dict[str, Any],
+        model,
+        train_cache,
+        transform_seq,
+        dataset_info,
+        architecture,
+        **kwargs
 ) -> TransformationProblem:
     """
     Build and return a TransformationProblem that wraps backbone+head with ReActConfidence.
@@ -90,13 +93,13 @@ def create_react_all_problem(
                     break
                 if isinstance(batch, (list, tuple)):
                     x = batch[0]
-                else: # dict
+                else:  # dict
                     x = batch.get("x")
-                
+
                 x = x.to(device)
                 features = backbone(x)
                 features_list.append(features.cpu())
-        
+
         embeddings_t = torch.cat(features_list, dim=0)
         conf_mod.fit(embeddings_t)
 

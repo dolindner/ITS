@@ -1,12 +1,10 @@
 # Improved Mahalanobis from "A Simple Fix to Mahalanobis Distance for Improving Near-OOD Detection"
 import torch
 import torch.nn.functional as F
-from confidence.unsupervised.classic.nn_pytorch import DistanceConfidence, _remap_labels_to_indices, _compute_global_mean_inv_cov, _compute_per_class_means_inv_covs
 
+from confidence.unsupervised.classic.nn_pytorch import DistanceConfidence, _remap_labels_to_indices, \
+    _compute_global_mean_inv_cov, _compute_per_class_means_inv_covs
 
-
-import torch
-import torch.nn.functional as F
 
 class RelativeMahalanobisConfidence(DistanceConfidence):
     """
@@ -24,6 +22,7 @@ class RelativeMahalanobisConfidence(DistanceConfidence):
     Returns:
         Configured RelativeMahalanobisConfidence instance.
     """
+
     def __init__(self,
                  mahalanobis_eps: float = 1e-6,
                  shared_covariance: bool = True,
@@ -87,18 +86,18 @@ class RelativeMahalanobisConfidence(DistanceConfidence):
                 if self.cov_mode == "diag":
                     var = (residuals ** 2).sum(0) / (N if self.use_raw_scatter else max(1, N - C))
                     inv_diag = 1.0 / (var + self.mahalanobis_eps)
-                    self.register_buffer("class_inv_diag", inv_diag.unsqueeze(0)) # [1, D]
+                    self.register_buffer("class_inv_diag", inv_diag.unsqueeze(0))  # [1, D]
                 elif self.cov_mode == "lowrank":
                     cov = (residuals.T @ residuals) / (N if self.use_raw_scatter else max(1, N - C))
                     cov = cov + torch.eye(D, device=x.device) * self.mahalanobis_eps
                     U, S, _ = torch.linalg.svd(cov, full_matrices=False)
                     r = min(self.low_rank_r, D)
-                    self.register_buffer("class_U", U[:, :r].unsqueeze(0)) # [1, D, R]
-                    self.register_buffer("class_inv_S", (1.0 / S[:r]).unsqueeze(0)) # [1, R]
+                    self.register_buffer("class_U", U[:, :r].unsqueeze(0))  # [1, D, R]
+                    self.register_buffer("class_inv_S", (1.0 / S[:r]).unsqueeze(0))  # [1, R]
                 else:
                     _, pooled_inv = _compute_global_mean_inv_cov(residuals, self.mahalanobis_eps)
                     if self.use_raw_scatter: pooled_inv /= float(max(1, N))
-                    self.register_buffer("class_inv_covs", pooled_inv.unsqueeze(0)) # [1, D, D]
+                    self.register_buffer("class_inv_covs", pooled_inv.unsqueeze(0))  # [1, D, D]
             else:
                 # Per-class path
                 if self.cov_mode == "diag":
@@ -112,7 +111,8 @@ class RelativeMahalanobisConfidence(DistanceConfidence):
                     r, U_list, inv_S_list = min(self.low_rank_r, D), [], []
                     for c in range(C):
                         U, S, _ = torch.linalg.svd(covs[c], full_matrices=False)
-                        U_list.append(U[:, :r]); inv_S_list.append(1.0 / S[:r])
+                        U_list.append(U[:, :r]);
+                        inv_S_list.append(1.0 / S[:r])
                     self.register_buffer("class_U", torch.stack(U_list))
                     self.register_buffer("class_inv_S", torch.stack(inv_S_list))
                 else:
@@ -132,7 +132,7 @@ class RelativeMahalanobisConfidence(DistanceConfidence):
         Returns:
             Per-sample relative Mahalanobis score (min over classes).
         """
-        diff_cls = x.unsqueeze(1) - self.class_means.unsqueeze(0) # [N, C, D]
+        diff_cls = x.unsqueeze(1) - self.class_means.unsqueeze(0)  # [N, C, D]
 
         # Optimized: einsum 'ncd,cd->nc' works whether cd is [C, D] or [1, D]
         if self.cov_mode == "diag":
@@ -144,7 +144,7 @@ class RelativeMahalanobisConfidence(DistanceConfidence):
             inter = torch.einsum('ncd,cde->nce', diff_cls, self.class_inv_covs)
             m2_cls = (inter * diff_cls).sum(-1)
 
-        diff_glob = x - self.global_mean # [N, D]
+        diff_glob = x - self.global_mean  # [N, D]
         g_mode = self.global_cov_mode if self.global_cov_mode is not None else self.cov_mode
         if g_mode == "diag":
             m2_0 = (diff_glob ** 2 * self.global_inv_diag).sum(-1, keepdim=True)
@@ -171,6 +171,7 @@ class PyTorchRMDWrapper:
     Returns:
         A wrapper around PyTorch RMD that operates on precomputed features.
     """
+
     def __init__(self):
         # use identity model: features are precomputed
         self.detector = PyTorchRMD(model=lambda t: t)
@@ -213,15 +214,14 @@ if __name__ == "__main__":
     y = torch.randint(0, C, (N,))
 
     # our implementation
-    ours = RelativeMahalanobisConfidence(shared_covariance=True,confidence_function=lambda x: x,use_raw_scatter=True)
+    ours = RelativeMahalanobisConfidence(shared_covariance=True, confidence_function=lambda x: x, use_raw_scatter=True)
     ours._fit(z, y)
 
-    #print cov
+    # print cov
     print("Class means:", ours.class_means)
     print("Global mean:", ours.global_mean)
     print("Global inverse covariance:", ours.global_inv_cov)
     print("Class inverse covariances:", ours.class_inv_covs)
-
 
     # pytorch_ood implementation
     pt = PyTorchRMDWrapper().fit(z, y)
@@ -235,18 +235,18 @@ if __name__ == "__main__":
     assert torch.allclose(ours.global_inv_cov, pt.detector.background_precision)
     assert torch.allclose(ours.class_inv_covs, pt.detector.precision)
 
-
     ours_scores = ours.forward(z[:10])  # get scores for first 10 samples
     pt_scores = pt.score(z[:10])  # get scores for first 10 samples
 
     print("Ours scores:", ours_scores)
     print("PyTorch scores:", pt_scores)
 
-    #check that score does not change when repeating z
+    # check that score does not change when repeating z
     z_ten_times = z.repeat(100, 1)
-    #now fit
+    # now fit
     y_ten_times = y.repeat(100)
-    ours_ten = RelativeMahalanobisConfidence(shared_covariance=True, confidence_function=lambda x: x, use_raw_scatter=True)
+    ours_ten = RelativeMahalanobisConfidence(shared_covariance=True, confidence_function=lambda x: x,
+                                             use_raw_scatter=True)
     ours_ten._fit(z_ten_times, y_ten_times)
     pt_ten = PyTorchRMDWrapper().fit(z_ten_times, y_ten_times)
     ours_ten_scores = ours_ten.forward(z_ten_times[:10])

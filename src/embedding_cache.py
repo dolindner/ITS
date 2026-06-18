@@ -1,22 +1,23 @@
-import os
-import json
+import copy
 import hashlib
+import json
+import os
+import re
 import time
 from typing import Any, Dict, Optional, Tuple, List, Union
 
 import torch
-from torch import nn
-from confidence.utils import ModelInputOutputWrapper
 from safetensors.torch import save_file, load_file
+from torch import nn
 from tqdm import tqdm
-import copy
+
 from confidence.input_transform import create_feature_reducer
-import re
+from confidence.utils import ModelInputOutputWrapper
 
 
-#Note this uses DataLayer batches to calculate identification(mainly so check if shuffle is true) disadvantage is that
-#this should have extracted the samples from the batches so that the same amount of samples is checked as now this depends on the batch size of the dataloader.
-#meaning that changing batch size makes the cache outdated.
+# Note this uses DataLayer batches to calculate identification(mainly so check if shuffle is true) disadvantage is that
+# this should have extracted the samples from the batches so that the same amount of samples is checked as now this depends on the batch size of the dataloader.
+# meaning that changing batch size makes the cache outdated.
 class LayerEmbeddingCache:
     """
     A class that for each model and dataset stores the extracted features at specific laytes.
@@ -35,6 +36,7 @@ class LayerEmbeddingCache:
     Honestly the whole thing needs a rewrite due to adding to many features to this especially
     the multi reducer support.(support for the same reducer with multiple settings still not that great as well)
     """
+
     def __init__(self,
                  model: nn.Module,
                  dataloader,
@@ -45,7 +47,8 @@ class LayerEmbeddingCache:
                  reducer_name: Optional[Union[str, List[str]]] = None,
                  reducer_kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,  # CHANGED
                  reducer_fit_batches: Union[int, List[int]] = 0,
-                 reducer_dim_threshold: Union[int, List[Union[int, Tuple[int, Optional[int]]]]] = 2048,  #when to spply each reducer
+                 reducer_dim_threshold: Union[int, List[Union[int, Tuple[int, Optional[int]]]]] = 2048,
+                 # when to spply each reducer
                  class_overrides: Optional[Union[Any, List[Any]]] = None
                  ):
         """
@@ -112,9 +115,11 @@ class LayerEmbeddingCache:
         # Recompute to ensure dataloader determinism (e.g., no random shuffling between iterations)
         dataset_fp2 = LayerEmbeddingCache._dataset_fingerprint(self.dataloader, self.dataset_fp_batches)
         if dataset_fp2 != self.dataset_fp:
-            raise RuntimeError("Non-deterministic dataloader detected: dataset fingerprint differs across consecutive passes.")
+            raise RuntimeError(
+                "Non-deterministic dataloader detected: dataset fingerprint differs across consecutive passes.")
 
-        print("Changes to pytorch version and gpu used can change the features slighly requiring a recompute. Please ensure that you update the cache in such scenarios")
+        print(
+            "Changes to pytorch version and gpu used can change the features slighly requiring a recompute. Please ensure that you update the cache in such scenarios")
         self.metadata = self._load_metadata()
         if self.metadata is None:
             self.metadata = {
@@ -129,10 +134,16 @@ class LayerEmbeddingCache:
                 "dtypes": {},
                 "transform_defaults": {
                     "enabled": bool(self.reducer_name),
-                    "name": self.reducer_name if isinstance(self.reducer_name, str) else (self.reducer_name[0] if self.reducer_name else None),
-                    "kwargs": self.reducer_kwargs if isinstance(self.reducer_kwargs, dict) else (self.reducer_kwargs[0] if isinstance(self.reducer_kwargs, list) and self.reducer_kwargs else {}),
-                    "fit_batches": self.reducer_fit_batches if isinstance(self.reducer_fit_batches, int) else (self.reducer_fit_batches[0] if self.reducer_fit_batches else 0),
-                    "dim_threshold": self.reducer_dim_threshold if isinstance(self.reducer_dim_threshold, int) else (self.reducer_dim_threshold[0] if isinstance(self.reducer_dim_threshold, list) and self.reducer_dim_threshold else 2048),
+                    "name": self.reducer_name if isinstance(self.reducer_name, str) else (
+                        self.reducer_name[0] if self.reducer_name else None),
+                    "kwargs": self.reducer_kwargs if isinstance(self.reducer_kwargs, dict) else (
+                        self.reducer_kwargs[0] if isinstance(self.reducer_kwargs,
+                                                             list) and self.reducer_kwargs else {}),
+                    "fit_batches": self.reducer_fit_batches if isinstance(self.reducer_fit_batches, int) else (
+                        self.reducer_fit_batches[0] if self.reducer_fit_batches else 0),
+                    "dim_threshold": self.reducer_dim_threshold if isinstance(self.reducer_dim_threshold, int) else (
+                        self.reducer_dim_threshold[0] if isinstance(self.reducer_dim_threshold,
+                                                                    list) and self.reducer_dim_threshold else 2048),
                     "reducers": self._reducers_public(self._reducers_norm)  # CHANGED
                 },
                 "per_key_transform": {}
@@ -158,13 +169,16 @@ class LayerEmbeddingCache:
                 "enabled": False, "name": None, "kwargs": {}, "fit_batches": 0, "dim_threshold": 2048
             })
             # Keep non-destructive merge for multi-reducer defaults (JSON-safe)
-            self.metadata["transform_defaults"].setdefault("reducers", self._reducers_public(self._reducers_norm))  # CHANGED
+            self.metadata["transform_defaults"].setdefault("reducers",
+                                                           self._reducers_public(self._reducers_norm))  # CHANGED
             self.metadata.setdefault("per_key_transform", {})
             # Lift any legacy single-variant entries into multi-variant schema
             for k, rec in list(self.metadata["per_key_transform"].items()):
-                if isinstance(rec, dict) and "variants" not in rec and {"class", "name", "kwargs", "path", "input_dim"} <= set(rec.keys()):
+                if isinstance(rec, dict) and "variants" not in rec and {"class", "name", "kwargs", "path",
+                                                                        "input_dim"} <= set(rec.keys()):
                     legacy = self.metadata["per_key_transform"].pop(k)
-                    self.metadata["per_key_transform"][k] = {"default": "__legacy__", "variants": {"__legacy__": legacy}}
+                    self.metadata["per_key_transform"][k] = {"default": "__legacy__",
+                                                             "variants": {"__legacy__": legacy}}
             self._reconcile_metadata_filesystem()
 
     def get_available_reducers(self, layer: str, mode: str) -> List[str]:
@@ -194,7 +208,7 @@ class LayerEmbeddingCache:
                 sample_dim = None
         else:
             sample_dim = None
-        
+
         if sample_dim is None:
             # Fallback: use shape from metadata or compute from sample
             shape_info = self.metadata.get("shapes", {}).get(layer, {}).get(mode)
@@ -202,7 +216,8 @@ class LayerEmbeddingCache:
                 sample_dim = int(torch.tensor(shape_info[1:]).prod().item())
             else:
                 # Dimension not in metadata, compute from a single sample
-                wrapper = ModelInputOutputWrapper(self.model, target_layer_names=[layer], capture_modes=[mode], flatten=False, concat=False)
+                wrapper = ModelInputOutputWrapper(self.model, target_layer_names=[layer], capture_modes=[mode],
+                                                  flatten=False, concat=False)
                 device = self.device or next(self.model.parameters()).device
                 self.model.eval()
                 with torch.no_grad():
@@ -421,7 +436,6 @@ class LayerEmbeddingCache:
             base += f"__{self._safe_name(variant)}"
         return os.path.join(self.transforms_dir, f"{base}.safetensors")
 
-
     def _reducers_public(self, specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         pub = []
         for s in specs or []:
@@ -469,9 +483,9 @@ class LayerEmbeddingCache:
                 return rmin, rmax
             if isinstance(val, int):
                 return int(val), None
-            return 10**12, None
+            return 10 ** 12, None
 
-        #guard against duplicate names without overrides
+        # guard against duplicate names without overrides
         name_to_idx: Dict[str, List[int]] = {}
         for i, nm in enumerate(names_list):
             name_to_idx.setdefault(str(nm), []).append(i)
@@ -508,7 +522,7 @@ class LayerEmbeddingCache:
             base = s["id"]
             c = counts.get(base, 0)
             if c > 0:
-                s["id"] = f"{base}#{c+1}"
+                s["id"] = f"{base}#{c + 1}"
             counts[base] = c + 1
         return specs
 
@@ -526,7 +540,7 @@ class LayerEmbeddingCache:
         builder = spec.get("builder", None)
         kwargs = spec.get("kwargs") or {}
         if builder is not None:
-            if isinstance(builder, nn.Module): #why should the speec be a nn module????
+            if isinstance(builder, nn.Module):  # why should the speec be a nn module????
                 return copy.deepcopy(builder)
             try:
                 return builder(**kwargs)
@@ -578,7 +592,7 @@ class LayerEmbeddingCache:
 
     # load saved reducer
     def _load_reducer_for_key(self, layer: str, mode: str, variant: Optional[str] = None) -> Optional[nn.Module]:
-        #look up in registry and get values to create reducer
+        # look up in registry and get values to create reducer
         rec = self.metadata.get("per_key_transform", {}).get(f"{layer}|{mode}")
         if not rec:
             return None
@@ -604,15 +618,18 @@ class LayerEmbeddingCache:
     # compute applicable reducers based on the dim.
     def _applicable_reducers(self, sample_dim: int, reducer_select: Optional[str] = None) -> List[Dict[str, Any]]:
         specs = self._reducers_norm or []
-        applicable = [s for s in specs if sample_dim > int(s["min"]) and (s["max"] is None or sample_dim <= int(s["max"]))]
+        applicable = [s for s in specs if
+                      sample_dim > int(s["min"]) and (s["max"] is None or sample_dim <= int(s["max"]))]
         if reducer_select:
             applicable = [s for s in applicable if reducer_select in (s["id"], s["name"])]
             if not applicable:
-                raise RuntimeError(f"Selected reducer '{reducer_select}' is not applicable for sample_dim={sample_dim}.")
+                raise RuntimeError(
+                    f"Selected reducer '{reducer_select}' is not applicable for sample_dim={sample_dim}.")
         if not applicable:
             finite_max = [int(s["max"]) for s in specs if s["max"] is not None]
             if finite_max and all(sample_dim > m for m in finite_max):
-                raise RuntimeError(f"No reducer applies for sample_dim={sample_dim}: exceeds all configured max ranges.")
+                raise RuntimeError(
+                    f"No reducer applies for sample_dim={sample_dim}: exceeds all configured max ranges.")
         return applicable
 
     # ------------ Internal compute/store ------------
@@ -627,6 +644,7 @@ class LayerEmbeddingCache:
         After writing layer files, update metadata layer_modes to most complete state.
         Variant-aware: if a default reducer variant exists, shapes/dtypes are taken from it.
         """
+
         # Determine existing availability using variant-aware paths
         def has_mode(m: str) -> Tuple[bool, Optional[str]]:
             base = self._embeddings_file_path(layer, m, None)
@@ -662,7 +680,8 @@ class LayerEmbeddingCache:
             self.metadata.setdefault("dtypes", {}).setdefault(layer, {})["output"] = str(tout.dtype)
 
     # helper to find missing embeddings
-    def _compute_missing(self, layers: List[str], modes: List[str], reducer_select: Optional[str] = None) -> Dict[str, List[str]]:
+    def _compute_missing(self, layers: List[str], modes: List[str], reducer_select: Optional[str] = None) -> Dict[
+        str, List[str]]:
         """
         Determine which (layer, mode) pairs are missing by checking actual files on disk (not just metadata),
         with awareness of reducer variants. If variants exist, check selected or default variant files.
@@ -722,7 +741,8 @@ class LayerEmbeddingCache:
         self.model.eval()
 
         # Accumulators
-        acc_default: Dict[Tuple[str, str], List[torch.Tensor]] = {(layer, mode): [] for layer, modes in missing.items() for mode in modes}
+        acc_default: Dict[Tuple[str, str], List[torch.Tensor]] = {(layer, mode): [] for layer, modes in missing.items()
+                                                                  for mode in modes}
         acc_variants: Dict[Tuple[str, str, str], List[torch.Tensor]] = {}
         acc_final: List[torch.Tensor] = []
         acc_y: List[torch.Tensor] = []
@@ -741,7 +761,9 @@ class LayerEmbeddingCache:
             total = self.max_batches if self.max_batches is not None else total_batches
 
         with torch.no_grad():
-            dl_iter = tqdm(self.dataloader, total=None if self.max_batches is None else min(self.max_batches, len(self.dataloader)), desc="Computing embeddings", unit="batch")
+            dl_iter = tqdm(self.dataloader,
+                           total=None if self.max_batches is None else min(self.max_batches, len(self.dataloader)),
+                           desc="Computing embeddings", unit="batch")
             for b_idx, batch in enumerate(dl_iter):
                 if self.max_batches is not None and b_idx >= self.max_batches:
                     break
@@ -760,7 +782,7 @@ class LayerEmbeddingCache:
                     y = y.to(device)
 
                 if wrapper:
-                    #wrapper returns intermediate and final outputs
+                    # wrapper returns intermediate and final outputs
                     inter_list, final_out = wrapper(x)
                     for i, (layer, mode) in enumerate(zip(capture_layers, capture_modes)):
                         key = (layer, mode)
@@ -769,7 +791,7 @@ class LayerEmbeddingCache:
                         t = inter_list[i]
 
                         st = transform_states.get(key)
-                        #get applicable reducer
+                        # get applicable reducer
                         if st is None:
                             try:
                                 sample_dim = int(torch.tensor(t.shape[1:]).prod().item()) if t.dim() > 1 else 1
@@ -779,15 +801,16 @@ class LayerEmbeddingCache:
                                 print(f"  - Problematic value 't' is of type {type(t)}")
                                 if isinstance(t, (list, tuple)):
                                     for i, item in enumerate(t):
-                                        print(f"    - Item {i} type: {type(item)}, shape: {getattr(item, 'shape', 'N/A')}")
+                                        print(
+                                            f"    - Item {i} type: {type(item)}, shape: {getattr(item, 'shape', 'N/A')}")
                                 else:
-                                     print(f"  - Value: {t}")
+                                    print(f"  - Value: {t}")
                                 raise e
                             applicable = self._applicable_reducers(sample_dim, reducer_select=reducer_select)
                             st = {
                                 "sample_dim": sample_dim,
                                 "has_any": bool(applicable),
-                                "buffer": [],     # shared buffer of original tensors (CPU)
+                                "buffer": [],  # shared buffer of original tensors (CPU)
                                 "seen": 0,
                                 "applicable": []  # per-variant states
                             }
@@ -811,7 +834,8 @@ class LayerEmbeddingCache:
                             # No reducer applies (min-side) -> store original base
                             if reducer_select:
                                 # selection requested but none applicable
-                                raise RuntimeError(f"No reducer available for selection '{reducer_select}' on ({layer}, {mode}).")
+                                raise RuntimeError(
+                                    f"No reducer available for selection '{reducer_select}' on ({layer}, {mode}).")
                             acc_default[key].append(t.detach().cpu())
                             continue
 
@@ -823,7 +847,7 @@ class LayerEmbeddingCache:
                         for j, vst in enumerate(st["applicable"]):
                             reducer = vst["reducer"]
                             just_initialized = False
-                            #Some reducer require fitting. These specify how much they require. Once the requested data amount is reached it is fitted.
+                            # Some reducer require fitting. These specify how much they require. Once the requested data amount is reached it is fitted.
                             if not vst["initialized"]:
                                 fb = vst["fit_batches"]
                                 if fb > 0 and st["seen"] >= fb and not vst["fitted"]:
@@ -837,7 +861,8 @@ class LayerEmbeddingCache:
                                     # Save reducer state and mark default for first applicable
                                     self._save_reducer(layer, mode, reducer, st["sample_dim"],
                                                        variant=vst["vid"], reg_name=vst["spec"]["name"],
-                                                       kwargs=vst["spec"].get("kwargs") or {}, default_variant=(j == 0))  # simplified
+                                                       kwargs=vst["spec"].get("kwargs") or {},
+                                                       default_variant=(j == 0))  # simplified
                                 elif fb == 0:
                                     # Immediate initialize (optionally one-shot fit on current batch)
                                     if hasattr(reducer, "fit") and callable(getattr(reducer, "fit")):
@@ -846,7 +871,9 @@ class LayerEmbeddingCache:
                                     vst["initialized"] = True
                                     just_initialized = True
                                     self._save_reducer(layer, mode, reducer, st["sample_dim"],
-                                                       variant=vst["vid"], reg_name=vst["spec"]["name"],kwargs=vst["spec"].get("kwargs") or {}, default_variant=(j == 0))  # simplified
+                                                       variant=vst["vid"], reg_name=vst["spec"]["name"],
+                                                       kwargs=vst["spec"].get("kwargs") or {},
+                                                       default_variant=(j == 0))  # simplified
 
                             if vst["initialized"]:
                                 # Transform only the unprocessed tail of the shared buffer
@@ -926,8 +953,8 @@ class LayerEmbeddingCache:
         self.metadata["updated_unix"] = time.time()
         self._save_metadata()
 
-    #This is a helper function to to create a wrapper reading out intermediate values. This can be used to compute multiple embedding
-    #but more importantly we can use it to create models to compute the confidence efficently if we need it for multiple layers like mahalanobis.
+    # This is a helper function to to create a wrapper reading out intermediate values. This can be used to compute multiple embedding
+    # but more importantly we can use it to create models to compute the confidence efficently if we need it for multiple layers like mahalanobis.
     def make_wrapper(self,
                      target_layer_names,
                      capture_modes='output',
@@ -1057,7 +1084,8 @@ class LayerEmbeddingCache:
                         if not applicable:
                             # No reducer applicable due to min-side: keep originals unless selection demanded
                             if reducer_select:
-                                raise RuntimeError(f"No reducer available for selection '{reducer_select}' for expanded index {i}.")
+                                raise RuntimeError(
+                                    f"No reducer available for selection '{reducer_select}' for expanded index {i}.")
                             reducer_states[i] = {"apply": False}
                             st = reducer_states[i]
                         else:
@@ -1151,7 +1179,8 @@ class LayerEmbeddingCache:
             return embeddings, y_tensor
         del reducer_states
         return embeddings
-    #gets all embeddings
+
+    # gets all embeddings
     @torch.no_grad()
     def get_embeddings(self,
                        target_layer_names,
@@ -1162,7 +1191,7 @@ class LayerEmbeddingCache:
                        return_y=True,
                        return_final=True,
                        reducer_select: Optional[str] = None,
-                       store: bool = True,verify=False):
+                       store: bool = True, verify=False):
         """
         Ensure embeddings (and optionally final outputs, y) are cached, then return.
         If reducers apply for a key, original data is not stored; embeddings are stored as layer__{reducer}.safetensors.
@@ -1223,12 +1252,13 @@ class LayerEmbeddingCache:
         if return_y:
             return emb, y_tensor
         return emb
-    #only gets embeddings that are correctly classified. This is done by the cache also string the final outputs.(requires classification model)
+
+    # only gets embeddings that are correctly classified. This is done by the cache also string the final outputs.(requires classification model)
     @torch.no_grad()
     def get_correct_embeddings(cache, target_layer_names,
                                capture_modes='output',
                                flatten=False, concat=False,
-                               entry_indices=0,reducer_select: Optional[str] = None):
+                               entry_indices=0, reducer_select: Optional[str] = None):
         """
         Return embeddings (filtered to correctly-classified examples),
         plus filtered final outputs and labels.
@@ -1244,7 +1274,7 @@ class LayerEmbeddingCache:
             concat=concat,
             entry_indices=entry_indices,
             return_final=True,
-            return_y=True,reducer_select=reducer_select
+            return_y=True, reducer_select=reducer_select
         )
 
         # Determine predictions (assumes final_out are logits or class-probs)
@@ -1299,7 +1329,8 @@ class LayerEmbeddingCache:
             reducer_select=reducer_select,
             store=store
         )
-    #TODO what is the differnce to compute direct?
+
+    # TODO what is the differnce to compute direct?
     def run_wrapper(self,
                     target_layer_names,
                     capture_modes='output',
@@ -1394,10 +1425,10 @@ class LayerEmbeddingCache:
         return embeddings
 
 
-
 if __name__ == "__main__":
     import shutil
     from torch.utils.data import Dataset, DataLoader
+
 
     class TinyDataset(Dataset):
         def __init__(self, n=32, in_dim=10, n_classes=3, seed=0):
@@ -1411,19 +1442,21 @@ if __name__ == "__main__":
         def __getitem__(self, idx):
             return self.x[idx], self.y[idx]
 
+
     class TinyNet(nn.Module):
         def __init__(self, in_dim=10, h=16, h2=12, out=3):
             super().__init__()
             self.seq = nn.Sequential(
-                nn.Linear(in_dim, h),      # layer name: seq.0
-                nn.ReLU(),                 # seq.1
-                nn.Linear(h, h2),          # seq.2
-                nn.ReLU(),                 # seq.3
-                nn.Linear(h2, out)         # seq.4
+                nn.Linear(in_dim, h),  # layer name: seq.0
+                nn.ReLU(),  # seq.1
+                nn.Linear(h, h2),  # seq.2
+                nn.ReLU(),  # seq.3
+                nn.Linear(h2, out)  # seq.4
             )
 
         def forward(self, x):
             return self.seq(x)
+
 
     # --- Build model & data ---
     device = torch.device("cpu")
@@ -1433,7 +1466,7 @@ if __name__ == "__main__":
 
     # --- Choose layers & modes (includes a 'both' to test expansion) ---
     target_layer_names = ["seq.2", "seq.0", "seq.0"]
-    capture_modes      = ["both", "output", "output"]
+    capture_modes = ["both", "output", "output"]
     entry_indices = [0] * len(target_layer_names)
 
     # Pre-compute expanded (layer,mode) list mirroring wrapper & cache ordering
@@ -1455,7 +1488,7 @@ if __name__ == "__main__":
         entry_indices=entry_indices
     )
 
-    direct_inter_acc = [ [] for _ in expanded_specs ]  # sized by expanded list
+    direct_inter_acc = [[] for _ in expanded_specs]  # sized by expanded list
     direct_final_acc = []
     direct_y_acc = []
     with torch.no_grad():
@@ -1492,8 +1525,6 @@ if __name__ == "__main__":
     # seq.0 output dim is 16, seq.2 input dim is 16, seq.2 output dim is 12
     # Expected: pca(8) applies to 16 and 12. noop applies to all.
     available_s0_out = cache.get_available_reducers("seq.0", "output")
-
-
 
     # --- Request embeddings via cache ---
     cached_result = cache.get_embeddings(

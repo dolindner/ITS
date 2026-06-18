@@ -1,7 +1,6 @@
 import torch
 
 from confidence.base_confidence import ConfidenceModule
-import torch.nn.functional as F
 
 
 class SplitConfidence(ConfidenceModule):
@@ -12,7 +11,9 @@ class SplitConfidence(ConfidenceModule):
     or adding the outputs of the two confidence modules, depending on the mult parameter.
 
     """
-    def __init__(self, confidence_inter, confidence_final, mult=True, a=1, b=1, scale_inter=None,scale_final=None,avg_inter=None):
+
+    def __init__(self, confidence_inter, confidence_final, mult=True, a=1, b=1, scale_inter=None, scale_final=None,
+                 avg_inter=None):
         """
         Initializes the SplitConfidence class.
         Args:
@@ -66,7 +67,8 @@ class PredictedSplitConfidence(ConfidenceModule):
     The final confidence score is computed by either multiplying
     or adding the outputs of the two confidence modules, depending on the mult parameter.
     """
-    def __init__(self, confidence_trust, confidence_final, mult=True, a=1, b=1,predict_inter=True,predict_final=True):
+
+    def __init__(self, confidence_trust, confidence_final, mult=True, a=1, b=1, predict_inter=True, predict_final=True):
         """
         Initializes the TrustSplitConfidence class.
 
@@ -103,7 +105,6 @@ class PredictedSplitConfidence(ConfidenceModule):
         # get predicted classes from logits
         predicted_classes = torch.argmax(logits, dim=-1)
 
-
         # combine confidences
         if self.mult:
             # calculate trust confidence using intermediate representation and predicted classes
@@ -116,11 +117,11 @@ class PredictedSplitConfidence(ConfidenceModule):
             confidence = confidence_trust * confidence_final
             return confidence
         else:
-            if self.a==0:
-                return self.confidence_final(logits, predicted_classes if self.predict_final else y)*self.b
-            if self.b==0:
+            if self.a == 0:
+                return self.confidence_final(logits, predicted_classes if self.predict_final else y) * self.b
+            if self.b == 0:
                 return self.confidence_trust(intermediate_output,
-                                                     predicted_classes if self.predict_inter else y)*self.a
+                                             predicted_classes if self.predict_inter else y) * self.a
 
             # calculate trust confidence using intermediate representation and predicted classes
             confidence_trust = self.confidence_trust(intermediate_output,
@@ -143,6 +144,7 @@ class TrueLabelSplitConfidence(ConfidenceModule):
     The final confidence score is computed by either multiplying
         or adding the outputs of the two confidence modules, depending on the mult parameter.
     """
+
     def __init__(self, confidence_trust, confidence_final, mult=True, a=1, b=1):
         """
         Initializes the TrustSplitConfidence class.
@@ -186,10 +188,10 @@ class TrueLabelSplitConfidence(ConfidenceModule):
             confidence = confidence_trust * confidence_final
             return confidence
         else:
-            if self.a==0:
-                return self.confidence_final(logits, y)*self.b
-            if self.b==0:
-                return self.confidence_trust(intermediate_output, y)*self.a
+            if self.a == 0:
+                return self.confidence_final(logits, y) * self.b
+            if self.b == 0:
+                return self.confidence_trust(intermediate_output, y) * self.a
 
             # calculate trust confidence using intermediate representation and true classes
             confidence_trust = self.confidence_trust(intermediate_output, y)

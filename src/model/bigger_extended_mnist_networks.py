@@ -1,13 +1,15 @@
 import math
+
 import torch.nn as nn
 from escnn import nn as escnn_nn
-from .basic_networks import FlexibleResNet, ESCNNFlexibleResNet, get_flexible_resnet_layer_mapping
 
+from .basic_networks import FlexibleResNet, ESCNNFlexibleResNet, get_flexible_resnet_layer_mapping
 
 
 def bigger_extended_resnet44(num_classes=47, activation=nn.GELU):
     # stem stride 2 for 56 -> 28
-    return FlexibleResNet([32, 64, 128], 7, num_classes=num_classes, in_channels=1, activation=activation, stem_stride=2)
+    return FlexibleResNet([32, 64, 128], 7, num_classes=num_classes, in_channels=1, activation=activation,
+                          stem_stride=2)
 
 
 def bigger_extended_equivariant_resnet44(num_classes=47, act_cls=escnn_nn.ReLU, num_rotations=8):
@@ -18,20 +20,20 @@ def bigger_extended_equivariant_resnet44(num_classes=47, act_cls=escnn_nn.ReLU, 
                                act_cls=act_cls, rotations=num_rotations, stem_stride=2)
 
 
-
 def bigger_extended_resnet_small(num_classes=47, activation=nn.GELU):
-    return FlexibleResNet([64, 128, 256,512], 1, num_classes=num_classes, in_channels=1, activation=activation, stem_stride=2)
+    return FlexibleResNet([64, 128, 256, 512], 1, num_classes=num_classes, in_channels=1, activation=activation,
+                          stem_stride=2)
+
 
 def _scale_channels_list(channels, divisor):
     return [max(8, math.ceil(c / divisor)) for c in channels]
+
 
 def bigger_extended_resnet_small_scaled(num_classes=47, activation=nn.GELU, divisor=1):
     base = [64, 128, 256, 512]
     if divisor != 1:
         base = _scale_channels_list(base, divisor)
     return FlexibleResNet(base, 1, num_classes=num_classes, in_channels=1, activation=activation, stem_stride=2)
-
-
 
 
 def get_bigger_extended_mnist_architectures():
@@ -50,6 +52,7 @@ def get_bigger_extended_mnist_architectures():
         "bigger_extended_resnet_small_quarter",
     ]
 
+
 def get_bigger_extended_mnist_network(architecture, num_classes=47, num_rotations=8):
     """
     Factory function to get specified bigger extended MNIST architecture.
@@ -67,12 +70,13 @@ def get_bigger_extended_mnist_network(architecture, num_classes=47, num_rotation
         return bigger_extended_equivariant_resnet44(num_classes=num_classes, num_rotations=num_rotations)
     raise ValueError(f"Unknown bigger extended MNIST architecture: {architecture}")
 
+
 def get_bigger_extended_mnist_network_layer(architecture, index, num_classes=47, num_rotations=8):
     """
     Returns (layer_name, capture_mode) for FlexibleResNet architectures.
     """
     a = architecture.lower()
-    
+
     if a == "bigger_extended_resnet44":
         blocks_per_stage = 7
         mapping = get_flexible_resnet_layer_mapping(blocks_per_stage, stages=3)
@@ -82,5 +86,4 @@ def get_bigger_extended_mnist_network_layer(architecture, index, num_classes=47,
         mapping = get_flexible_resnet_layer_mapping(blocks_per_stage, stages=4)
         return mapping[index]
 
-    
     raise ValueError(f"Layer mapping not implemented for bigger extended MNIST architecture: {architecture}")

@@ -2,14 +2,15 @@ import json
 import math
 import os
 
+import matplotlib as mpl
 import pandas as pd
 import torchvision
-import matplotlib as mpl
 
 
 def load_json(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def extract_per_run_metrics(obj):
     keys = ["runs", "results", "per_run", "all_results", "metrics", "experiments"]
@@ -17,7 +18,8 @@ def extract_per_run_metrics(obj):
     if isinstance(obj, dict):
         for k in keys:
             if k in obj and isinstance(obj[k], list) and len(obj[k]) > 0:
-                candidates = obj[k]; break
+                candidates = obj[k];
+                break
     if candidates is None:
         candidates = obj if isinstance(obj, list) and len(obj) > 0 else [obj]
     rows = []
@@ -30,6 +32,7 @@ def extract_per_run_metrics(obj):
                 rows.append(row)
     return rows
 
+
 def summarize_runs(rows):
     if len(rows) == 0:
         return pd.Series(dtype=float), pd.Series(dtype=float)
@@ -38,6 +41,7 @@ def summarize_runs(rows):
     mean = df.mean(axis=0, skipna=True)
     se = (df.std(axis=0, ddof=1) / math.sqrt(n)).fillna(0.0) if n > 1 else pd.Series(0.0, index=df.columns)
     return mean, se
+
 
 def compute_y_limits(means, ses):
     arr_low = np.array(means) - np.array(ses)
@@ -49,6 +53,7 @@ def compute_y_limits(means, ses):
     pad = 0.5 * (maxv - minv) if maxv > minv else 0.1 * abs(maxv) if maxv != 0 else 0.1
     return float(minv - pad), float(maxv + pad)
 
+
 def choose_accuracy_metric(columns):
     cols = [c.lower() for c in columns]
     for pattern in ("accuracy", "acc", "top1"):
@@ -57,7 +62,9 @@ def choose_accuracy_metric(columns):
                 return list(columns)[i]
     return None
 
+
 import re
+
 
 def sanitize_latex(s: str) -> str:
     """
@@ -96,7 +103,7 @@ def sanitize_latex(s: str) -> str:
     return pattern.sub(repl, s)
 
 
-def plot_group_short(title, labels, means, ses, ylabel, save_path=None, use_pgf=True,rot=True):
+def plot_group_short(title, labels, means, ses, ylabel, save_path=None, use_pgf=True, rot=True):
     """
     Plot a short grouped bar plot with LaTeX-safe text.
     If save_path is provided, save as PGF (if use_pgf) or fallback by extension and do not show interactively.
@@ -110,21 +117,21 @@ def plot_group_short(title, labels, means, ses, ylabel, save_path=None, use_pgf=
     colors = [cmap(i % cmap.N) for i in range(len(safe_labels))]
 
     fig, ax = plt.subplots()
-    ax.bar(x, means, yerr=ses, capsize=5, color=colors, edgecolor="black", alpha=1.0,zorder=2)
+    ax.bar(x, means, yerr=ses, capsize=5, color=colors, edgecolor="black", alpha=1.0, zorder=2)
 
     ax.set_xticks(x)
 
     if rot:
-        rotation=20
+        rotation = 20
         ha = "right"
     else:
-        rotation=0
+        rotation = 0
         ha = "center"
     ax.set_xticklabels(safe_labels, rotation=rotation, ha=ha)
     ax.set_ylabel(safe_ylabel)
     ax.set_title(safe_title, pad=6)
 
-    ax.grid(axis="y", linestyle="--", alpha=0.7,zorder=-1)
+    ax.grid(axis="y", linestyle="--", alpha=0.7, zorder=-1)
 
     ylims = compute_y_limits(means, ses)
     if ylims is not None:
@@ -140,8 +147,7 @@ def plot_group_short(title, labels, means, ses, ylabel, save_path=None, use_pgf=
         plt.show()
 
 
-
-def build_and_write_latex(base_results_dir,architecture,group_key, group_title, labels, summaries):
+def build_and_write_latex(base_results_dir, architecture, group_key, group_title, labels, summaries):
     # common metrics across all variants
     common = None
     for s in summaries.values():
@@ -151,7 +157,10 @@ def build_and_write_latex(base_results_dir,architecture,group_key, group_title, 
         print(f"[{group_key}] No common metrics for LaTeX. Skipping.")
         return
     metrics_sorted = sorted(common)
-    def fmt(mu, se): return f"{mu:.4f} ± {se:.4f}"
+
+    def fmt(mu, se):
+        return f"{mu:.4f} ± {se:.4f}"
+
     latex_df = pd.DataFrame(
         {lbl: [fmt(summaries[lbl]["mean"][m], summaries[lbl]["se"][m]) for m in metrics_sorted]
          for lbl in labels},
@@ -176,6 +185,8 @@ def _default_pgf_path(root_dir, architecture, group_key, metric):
     safe_metric = str(metric).replace("/", "_").replace(" ", "_")
     fname = f"{architecture}_{group_key}_{safe_metric}.pgf"
     return os.path.join(root_dir, "plots", architecture, fname)
+
+
 def _default_pdf_path(root_dir, architecture, group_key, metric):
     """
     Autogenerate a PDF output path from inputs.
@@ -186,7 +197,7 @@ def _default_pdf_path(root_dir, architecture, group_key, metric):
     return os.path.join(root_dir, "plots", architecture, fname)
 
 
-def vis_dataset_image(train,val,test):
+def vis_dataset_image(train, val, test):
     # test images
     fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 5))
     train_data = next(iter(train))[0]
@@ -203,15 +214,12 @@ def vis_dataset_image(train,val,test):
     for ax in axs.flat:
         ax.axis('off')
 
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
+
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 
 def vis_dataset_image(train, val, test):
@@ -357,8 +365,8 @@ def vis_dataset(train, val, test):
         raise ValueError(f"Unsupported data shape for visualization: {data_shape}")
 
 
-
-def process_and_plot_groups(groups, base_results_dir, architecture, save_root=None, save_pgf=True,width=None,height=None):
+def process_and_plot_groups(groups, base_results_dir, architecture, save_root=None, save_pgf=True, width=None,
+                            height=None):
     """
     Process and plot each group in `groups`.
     Each group is (group_key, group_title, items) where items is list of (label, filename).
@@ -392,11 +400,13 @@ def process_and_plot_groups(groups, base_results_dir, architecture, save_root=No
 
         labels = [lbl for (lbl, _) in existing]
         means = [summaries[lbl]["mean"].get(metric, np.nan) for lbl in labels]
-        ses   = [summaries[lbl]["se"].get(metric, 0.0) for lbl in labels]
+        ses = [summaries[lbl]["se"].get(metric, 0.0) for lbl in labels]
 
         # decide save path (PGF) if requested
         root_for_save = (save_root if save_root is not None else base_results_dir)
-        save_path = _default_pgf_path(root_for_save, architecture, group_key, metric) if save_pgf else _default_pdf_path(root_for_save, architecture, group_key, metric)
+        save_path = _default_pgf_path(root_for_save, architecture, group_key,
+                                      metric) if save_pgf else _default_pdf_path(root_for_save, architecture, group_key,
+                                                                                 metric)
 
         # plot (and optionally save)
         plot_group_short(None, labels, means, ses, ylabel=metric.capitalize(),
@@ -424,7 +434,7 @@ def plt_setup_latex(W=4.9823):
         "axes.titlesize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        #set dpi
+        # set dpi
         "figure.dpi": 300,
 
         # --- PGF (LaTeX) compatibility ---
@@ -445,8 +455,7 @@ def plt_setup_latex(W=4.9823):
     return W
 
 
-
-def plt_setup_paper(W=5.5): #4.803 W would be correct reexport?
+def plt_setup_paper(W=5.5):  # 4.803 W would be correct reexport?
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     mpl.rcdefaults()
@@ -483,7 +492,6 @@ def plt_setup_paper(W=5.5): #4.803 W would be correct reexport?
         \usepackage[utf8]{inputenc}
         """
     })
-
 
     plt.rcParams.update({
         "figure.figsize": (W, W * 0.75),

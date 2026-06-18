@@ -3,12 +3,8 @@ This file contains abstract base classes for confidence estimation modules and s
 More complex modules can be found in other files in the confidence directory.
 """
 import abc
-import inspect
-from enum import IntEnum
 
-import torch
 import torch.nn
-
 
 
 class ConfidenceModule(torch.nn.Module):
@@ -34,4 +30,3 @@ class ConfidenceModule(torch.nn.Module):
             Confidence scores. Shape: (*batch_dims)
         """
         pass
-

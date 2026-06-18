@@ -5,16 +5,17 @@ Original: https://github.com/johschm/its
 Changes include adding confidence module support. Adding simple reshaping for non images.
 """
 
-
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-from its.transform import orbit_sampling, identity
-from tqdm import tqdm
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Rectangle
-#taken from its package and adapted to handle non images as well as allowing a settable confidence module.
+
+from its.transform import orbit_sampling, identity
+
+
+# taken from its package and adapted to handle non images as well as allowing a settable confidence module.
 
 def entropy(p):
     """
@@ -115,9 +116,10 @@ class InverseTransformationSearch:
                  fontsize=16,
                  gaussian_filter_channel_wise=False,
                  confidence_module=None,
-                 extend=1, #for our metrics we do not need extra padding only for original as it calculated differences and gaussian smoothing. So for those this should stay 1.
+                 extend=1,
+                 # for our metrics we do not need extra padding only for original as it calculated differences and gaussian smoothing. So for those this should stay 1.
                  resampling_method=None,
-     ):
+                 ):
         """
         Initialises the ITS inference module.
 
@@ -168,10 +170,11 @@ class InverseTransformationSearch:
         # recorded once on first infer: original input ndim (e.g. 4 for images B,C,H,W; 3 for sequences B,L,F)
         self._orig_input_dim = None
         self._matrix_dim = None
-        self.debug_energy_only= False
+        self.debug_energy_only = False
 
     @torch.no_grad()
-    def infer(self, x, plot_idx=None, return_best: bool = False, matrix_dim: int | None = None, max_batch_size_override: int | None = None):
+    def infer(self, x, plot_idx=None, return_best: bool = False, matrix_dim: int | None = None,
+              max_batch_size_override: int | None = None):
         """
         This is the inference function which initiates the search process.
 
@@ -199,13 +202,13 @@ class InverseTransformationSearch:
         if matrix_dim is not None:
             self._matrix_dim = matrix_dim
         else:
-            self._matrix_dim = 3 # Fallback for old transformations
+            self._matrix_dim = 3  # Fallback for old transformations
         self.T = identity((self.batch_size, self.n_hypotheses), d=self._matrix_dim).to(x.device)
         self.history = {"orbit": [], "embedding": [], "score": [], "n_max": [], "T": []}
         self.en_plot = plot_idx is not None
 
-        #pad x dims such that they are 4 dims (B,1,1,D) if input is 1d or 3 dims (B,1,H,W) if input is 2d
-        if self._orig_input_dim not in [4,None]:
+        # pad x dims such that they are 4 dims (B,1,1,D) if input is 1d or 3 dims (B,1,H,W) if input is 2d
+        if self._orig_input_dim not in [4, None]:
             if self._orig_input_dim == 3:
                 x = x[:, None, ...]
             elif self._orig_input_dim == 2:
@@ -234,9 +237,9 @@ class InverseTransformationSearch:
             # identity indices shape: (batch x n_hypotheses)
             indices = torch.arange(self.n_hypotheses, device=x.device)[None, :].expand(self.batch_size, -1)
 
-        #remove potential extra dim from x_t if input was not image
+        # remove potential extra dim from x_t if input was not image
         if self._orig_input_dim not in [4, None]:
-            x_t = x_t.flatten(start_dim=1,end_dim=x_t.dim()-self._orig_input_dim)
+            x_t = x_t.flatten(start_dim=1, end_dim=x_t.dim() - self._orig_input_dim)
 
         if return_best:
             # best_param: reorder self.T (batch x n_hypotheses x 3 x 3) according to indices
@@ -284,7 +287,7 @@ class InverseTransformationSearch:
         return x_t, z
 
     @staticmethod
-    def _estimate_confidence(z,channel_wise=False):
+    def _estimate_confidence(z, channel_wise=False):
         """
         Estimates the confidence score of the input `z`.
 
@@ -298,7 +301,7 @@ class InverseTransformationSearch:
         n_hypotheses = energies.shape[1]
         if channel_wise:
             # apply gaussian filter to each channel(hypothesis) separately
-            energies = gaussian_filter1d_channel_wise(energies, sigma=2, radius=3, mode='replicate')*n_hypotheses
+            energies = gaussian_filter1d_channel_wise(energies, sigma=2, radius=3, mode='replicate') * n_hypotheses
         else:
             energies = gaussian_filter1d(energies, sigma=2, radius=3, mode='replicate')
         return -curvature(energies.clone().detach().to(device=z.device))
@@ -387,12 +390,12 @@ class InverseTransformationSearch:
             T (torch.Tensor): The transformation matrix. (batch x n_hypotheses x n_samples x 3 x 3)
         """
         # Optimization for level 0: compute orbit for one hypothesis and expand
-        OPT= True
+        OPT = True
         if level == 0 and OPT:
             n_hypotheses_orig = self.n_hypotheses
             self.n_hypotheses = 1
             x_in = x[:, 0:1]
-            #this line is correct
+            # this line is correct
             T_prior = self.T[[0]].flatten(end_dim=1)[:, None].expand((-1, self.n_samples + 2 * self.extend, -1, -1))
 
         else:
@@ -406,11 +409,11 @@ class InverseTransformationSearch:
         # as well as the corresponding transformation matrices (batch x n_hypotheses x n_samples x 3 x 3)
         orbit, T = orbit_sampling(x_in.flatten(end_dim=1),
                                   self.transformation_schedule[level],  # apply the transformation of that orbit
-                                  n_samples=self.n_samples,             # number of regular samples
-                                  domain=[self.domain[level],],         # the domain of the current level
-                                  T=T_prior, extend=self.extend,resample_fn=self.resampling_method,orig_data_dim=self._orig_input_dim, matrix_dim=self._matrix_dim)
+                                  n_samples=self.n_samples,  # number of regular samples
+                                  domain=[self.domain[level], ],  # the domain of the current level
+                                  T=T_prior, extend=self.extend, resample_fn=self.resampling_method,
+                                  orig_data_dim=self._orig_input_dim, matrix_dim=self._matrix_dim)
         # obtain the representation of the input (batch * n_hypotheses * n_samples+2 x embedding_dim)
-
 
         z_was_none = False
         if self.confidence_module is not None:
@@ -426,15 +429,15 @@ class InverseTransformationSearch:
                     score, z, z_was_none = self._predict_confidence(flat_in)
             orbit = orbit.unflatten(0, (self.batch_size, self.n_hypotheses)).squeeze(dim=2)
 
-            #the number of hypothesis dimension has images of different batches if non image data(maybe image data now as well have not checked yet)
-            #if orbit is not dim 6 as for image data readd extra dimensions after 3 batch dims
-            if orbit.dim() == 5 and self._orig_input_dim not in [4,None]:
+            # the number of hypothesis dimension has images of different batches if non image data(maybe image data now as well have not checked yet)
+            # if orbit is not dim 6 as for image data readd extra dimensions after 3 batch dims
+            if orbit.dim() == 5 and self._orig_input_dim not in [4, None]:
                 orbit = orbit[:, :, :, None, :, :]
-            if orbit.dim() == 4 and self._orig_input_dim not in [4,None]:
+            if orbit.dim() == 4 and self._orig_input_dim not in [4, None]:
                 orbit = orbit[:, :, :, None, None, :]
 
-            z = z.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2*self.extend))
-            score = score.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2*self.extend))
+            z = z.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2 * self.extend))
+            score = score.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2 * self.extend))
             # squeeze away single orbit dim as len(T) = 1
             # T is a list of length 1
             T = T[0].unflatten(0, (self.batch_size, self.n_hypotheses))
@@ -446,7 +449,7 @@ class InverseTransformationSearch:
                 flat_in = orbit.flatten(start_dim=0, end_dim=2)
                 flat_in = flat_in.flatten(end_dim=flat_in.dim() - self._orig_input_dim)
                 z = self._predict(flat_in)
-            z = z.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2*self.extend))
+            z = z.unflatten(0, (self.batch_size, self.n_hypotheses, self.n_samples + 2 * self.extend))
             # squeeze away single orbit dim as len(T) = 1
             orbit = orbit.unflatten(0, (self.batch_size, self.n_hypotheses)).squeeze(dim=2)
 
@@ -606,13 +609,14 @@ class InverseTransformationSearch:
             Returns the plot as a matplotlib figure.
 
         """
-        fig = plt.figure(layout='constrained', figsize=(self.n_samples * 1.5, self.n_hypotheses * 2 * len(self.transformation)))
+        fig = plt.figure(layout='constrained',
+                         figsize=(self.n_samples * 1.5, self.n_hypotheses * 2 * len(self.transformation)))
         subfigs = fig.subfigures(len(self.transformation), 1, wspace=0.07)
         subfigs = subfigs if len(self.transformation) > 1 else [subfigs, ]
 
         # normalize scores globally over the entire tree
         # scores: level x (B x K x O)
-        stacked_tensor = np.stack(self.history["score"]).transpose((1, 0, 2, 3)) # bring batch up front
+        stacked_tensor = np.stack(self.history["score"]).transpose((1, 0, 2, 3))  # bring batch up front
         min_val = stacked_tensor.reshape(self.batch_size, -1).min(axis=-1)[:, None, None]
         max_val = stacked_tensor.reshape(self.batch_size, -1).max(axis=-1)[:, None, None]
 
@@ -626,7 +630,7 @@ class InverseTransformationSearch:
         return fig
 
     def _plot_level(self, fig, orbit_samples: torch.tensor, embedding: torch.tensor, scores: torch.tensor,
-                     candidates: torch.tensor, level: int, batch_index=0):
+                    candidates: torch.tensor, level: int, batch_index=0):
         """
         Plots on level of the search tree.
 
@@ -665,7 +669,8 @@ class InverseTransformationSearch:
                     im = (im - im.min()) / (im.max() - im.min())
 
                 # add score-colored rectangle
-                color_rec = np.tile(np.array(colors[batch_index, k, s, :3])[None, None],(5*self.line_thickness, im.shape[1], 1))
+                color_rec = np.tile(np.array(colors[batch_index, k, s, :3])[None, None],
+                                    (5 * self.line_thickness, im.shape[1], 1))
                 im = np.concatenate([color_rec, im], axis=0)
 
                 # plot the image
@@ -683,5 +688,4 @@ class InverseTransformationSearch:
                 # highlight candidates
                 if ((level == 0 and np.any(s == candidates[batch_index]))
                         or (level > 0 and s == candidates[batch_index, k])):
-                    highlight_subplot(ax[k, s], plt.get_cmap('coolwarm')(1.), 1*self.line_thickness)
-
+                    highlight_subplot(ax[k, s], plt.get_cmap('coolwarm')(1.), 1 * self.line_thickness)

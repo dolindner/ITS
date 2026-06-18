@@ -1,8 +1,8 @@
-import math
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import torch
+
 
 class Transform(ABC):
     """
@@ -12,7 +12,6 @@ class Transform(ABC):
       - if support_calc_bounds() is True:
             calc_bounds(self, domain, dtype=torch.float32, device="cpu") -> (Tensor, Tensor)  # lower, upper bounds for each parameter
     """
-
 
     def __init__(self):
         """
@@ -40,17 +39,14 @@ class Transform(ABC):
         """
         ...
 
-
     @abstractmethod
-    def sample_param(self,batch_size,domain,device="cpu",dtype=torch.float32) -> torch.Tensor:
+    def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         """
         Sample a parameter for the transformation.
         """
         ...
 
-
-
-    def project_parameters(self, param: torch.Tensor,domain, reflect=True) -> torch.Tensor:
+    def project_parameters(self, param: torch.Tensor, domain, reflect=True) -> torch.Tensor:
         """
         Args:
             param: param to reflect
@@ -68,19 +64,12 @@ class Transform(ABC):
         """
         return param
 
-
-
-
-
-
-
     @abstractmethod
     def supports_sobol(self) -> bool:
         """
         Indicates if the transform supports sobol sampling.
         """
         ...
-
 
     def sample_space_param_size(self):
         """
@@ -89,10 +78,8 @@ class Transform(ABC):
         """
         return self.param_size()
 
-
-
-    #methods that have to be potentially overridden by subclasses
-    def sobol_to_param(self, sparam: torch.Tensor,domain) -> torch.Tensor:
+    # methods that have to be potentially overridden by subclasses
+    def sobol_to_param(self, sparam: torch.Tensor, domain) -> torch.Tensor:
         """
         Converts parameters from the range [0,1] to actual parameters.
         """
@@ -104,7 +91,6 @@ class Transform(ABC):
         Indicates if the transform supports orbit sampling.
         True if the transform supports orbit sampling, False otherwise.
         """
-
 
     def orbit(self,
               n_samples: int,
@@ -135,14 +121,13 @@ class Transform(ABC):
         # total samples including padding
         total = n_samples + 2 * extend
 
-
         # linear spacing in [low_p, high_p]
         rng = high_p - low_p
         spacing = rng / (n_samples - 1) if n_samples > 1 else 0
         start = low_p - extend * spacing
         values = torch.linspace(start,
-                                    high_p + extend * spacing,
-                                    total) + shift * spacing
+                                high_p + extend * spacing,
+                                total) + shift * spacing
         # project values back into [0,1] via modulo (finish previous TODO)
         if total > 0:
             values = torch.remainder(values, 1.0)
@@ -150,14 +135,11 @@ class Transform(ABC):
         params = torch.zeros((total, sample_dim), dtype=torch.float32)
         params[:, dim] = values
 
-        #convert params from sample space to parameter space
+        # convert params from sample space to parameter space
         params = self.sobol_to_param(params)
         return params
 
-
-
-
-    #methods that should not be overridden by subclasses
+    # methods that should not be overridden by subclasses
     def as_dict(self):
         """
         Provide a dictionary interface for backward compatibility.
@@ -167,11 +149,10 @@ class Transform(ABC):
             "param_size": self.param_size(),
             "project_parameters": self.project_parameters,
             "calc_bounds": self.calc_bounds,
-            "orbit": [self.orbit,],
-            "param": [self.orbit_member,],
+            "orbit": [self.orbit, ],
+            "param": [self.orbit_member, ],
             "interval": self.interval(),
         }
-
 
     def __call__(self, param: torch.Tensor) -> torch.Tensor:
         """
@@ -191,16 +172,13 @@ class Transform(ABC):
         """
         return None
 
-
-
     def __getitem__(self, key: str):
         """
         Allow backward-compatible dict-style access, e.g. transform['matrix'].
         """
         return self.as_dict()[key]
 
-
-    def apply(self,T: torch.Tensor,param: torch.Tensor) -> torch.Tensor:
+    def apply(self, T: torch.Tensor, param: torch.Tensor) -> torch.Tensor:
         """
         Applies the transformation described by param to a previous transformation matrix using matrix multiplication.
         Args:
@@ -211,7 +189,7 @@ class Transform(ABC):
         """
         if T is None:
             return self.matrix(param)
-        #matrix multiplication
+        # matrix multiplication
         return torch.matmul(self.matrix(param), T)
 
     def __eq__(self, other):
@@ -225,18 +203,13 @@ class Transform(ABC):
         items = tuple(sorted(self.__dict__.items()))
         return hash((self.__class__, items))
 
-
-    def orbit_member(self, n: int, n_samples: int, domain,dim=0) -> torch.Tensor:
+    def orbit_member(self, n: int, n_samples: int, domain, dim=0) -> torch.Tensor:
         """ gets a specific orbit member."""
-        res =  self.orbit(n_samples=n_samples, domain=domain,dim=dim, extend=0, shift=0)
+        res = self.orbit(n_samples=n_samples, domain=domain, dim=dim, extend=0, shift=0)
         return res[n]
 
-
-
-
-
-    #TODO consider removing
-    #consider removing and only implementing this for bounded transforms_old
+    # TODO consider removing
+    # consider removing and only implementing this for bounded transforms_old
     @abstractmethod
     def calc_bounds(self, domain, dtype=torch.float32, device="cpu") -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -257,8 +230,6 @@ class Transform(ABC):
         Indicates if the transform implements calc_bounds_fallback.
         """
         return False
-
-
 
     def default_neighbourhood_size(self, domain=None, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
@@ -282,7 +253,7 @@ class Transform(ABC):
         """
         return None
 
-    def identity_param(self,batch_size: Optional[int] = 1,dtype=torch.float32, device="cpu") -> torch.Tensor:
+    def identity_param(self, batch_size: Optional[int] = 1, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
         Returns the parameter that corresponds to the identity transformation.
         By default, returns a zero tensor.

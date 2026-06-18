@@ -2,7 +2,7 @@ import torch
 
 from src.utils.affine_transforms import AffineTransformation2D, AffineTransformations3D
 from src.utils.transform_sequence import TransformSequence
-from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud,transform_strokes_affine
+from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud, transform_strokes_affine
 
 
 def get_transformation_sequence_images(name="mnist_default", resample_method=grid_resample, init_method="individual"):
@@ -85,8 +85,8 @@ def get_transformation_sequence_images(name="mnist_default", resample_method=gri
             (-torch.pi, torch.pi),
             ((-0.5, 0.5),),
             ((-0.5, 0.5),),
-            ((1/(1+0.8)-1, 0.8),),
-            ((1/(1+0.8)-1, 0.8),)
+            ((1 / (1 + 0.8) - 1, 0.8),),
+            ((1 / (1 + 0.8) - 1, 0.8),)
         ]
         use_individual_param_correction = False
     elif name in ["mnist_with_reflection", "mnist_reflection"]:
@@ -124,8 +124,8 @@ def get_transformation_sequence_images(name="mnist_default", resample_method=gri
             (-torch.pi, torch.pi),
             ((-0.5, 0.5),),
             ((-0.5, 0.5),),
-            ((1/(1+0.8)-1, 0.8),),
-            ((1/(1+0.8)-1, 0.8),),
+            ((1 / (1 + 0.8) - 1, 0.8),),
+            ((1 / (1 + 0.8) - 1, 0.8),),
             ((-1.0, 1.0),),
             ((-1.0, 1.0),),
         ]
@@ -140,11 +140,11 @@ def get_transformation_sequence_images(name="mnist_default", resample_method=gri
             AffineTransformation2D.SCALING_Y.value
         ]
         domains = [
-            (-torch.pi / 6, torch.pi / 6),      # ±30 degrees
-            ((-0.2, 0.2),),                     # shearing x
-            ((-0.2, 0.2),),                     # shearing y
-            ((1/1.1 - 1, 0.1),),                     # scaling x
-            ((1/1.1 - 1, 0.1),)                      # scaling y
+            (-torch.pi / 6, torch.pi / 6),  # ±30 degrees
+            ((-0.2, 0.2),),  # shearing x
+            ((-0.2, 0.2),),  # shearing y
+            ((1 / 1.1 - 1, 0.1),),  # scaling x
+            ((1 / 1.1 - 1, 0.1),)  # scaling y
         ]
         use_individual_param_correction = False
     else:

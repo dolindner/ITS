@@ -87,7 +87,7 @@ class ClassPrototypeConfidence(DistanceConfidence):
                 [torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
             mahalanobis_eps: float = 1e-6,
             shared_covariance: bool = False,
-            mixed_alpha: float = 0.5, #use a mixture between cosine and euclidean distance.
+            mixed_alpha: float = 0.5,  # use a mixture between cosine and euclidean distance.
             mixed_squared: bool = False,
             mixed_normalize_euclid: bool = True,
             **kwargs
@@ -163,7 +163,7 @@ class ClassPrototypeConfidence(DistanceConfidence):
             else:
                 # Use unified distance function for other metrics
                 # Compute full distance matrix between samples and class means
-                all_dists = _compute_distance_metric(x, self.class_means, self.metric, **kwargs) # (N, C)
+                all_dists = _compute_distance_metric(x, self.class_means, self.metric, **kwargs)  # (N, C)
 
                 # Create a mask to select the correct distance for each sample
                 mask = F.one_hot(y_idx, num_classes=self.class_means.shape[0]).bool()
@@ -199,19 +199,26 @@ class ClassPrototypeConfidence(DistanceConfidence):
 if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
-    N_per = 50; D = 2
-    mu0 = np.array([0.,0.]); cov0 = np.eye(2)*0.5
-    mu1 = np.array([5.,5.]); cov1 = np.eye(2)*0.5
-    data0 = np.random.multivariate_normal(mu0,cov0,N_per)
-    data1 = np.random.multivariate_normal(mu1,cov1,N_per)
-    X = np.vstack([data0,data1]); y = np.hstack([np.zeros(N_per), np.ones(N_per)])
-    X_t = torch.from_numpy(X).float(); y_t = torch.from_numpy(y).long()
-    X_test = torch.tensor([[0.1,-0.2],[4.8,5.2],[2.5,2.5]])
-    y_test = torch.tensor([0,1,0])
+    N_per = 50;
+    D = 2
+    mu0 = np.array([0., 0.]);
+    cov0 = np.eye(2) * 0.5
+    mu1 = np.array([5., 5.]);
+    cov1 = np.eye(2) * 0.5
+    data0 = np.random.multivariate_normal(mu0, cov0, N_per)
+    data1 = np.random.multivariate_normal(mu1, cov1, N_per)
+    X = np.vstack([data0, data1]);
+    y = np.hstack([np.zeros(N_per), np.ones(N_per)])
+    X_t = torch.from_numpy(X).float();
+    y_t = torch.from_numpy(y).long()
+    X_test = torch.tensor([[0.1, -0.2], [4.8, 5.2], [2.5, 2.5]])
+    y_test = torch.tensor([0, 1, 0])
+
 
     # Custom distance function example - Manhattan distance
     def manhattan_distance(x, y):
         return torch.cdist(x, y, p=1)
+
 
     # Test the distance-based confidence classes
     for name, cls in [

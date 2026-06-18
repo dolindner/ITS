@@ -2,6 +2,7 @@ import math
 from typing import Optional
 
 import torch
+
 from src.utils.transforms.base import Transform
 
 
@@ -18,7 +19,6 @@ class BoundedTransform(Transform):
         super().__init__()
         self.log = log
 
-
     def calc_bounds(self, domain, dtype=torch.float32, device="cpu") -> tuple[torch.Tensor, torch.Tensor]:
         """
         Calculate lower and upper bounds for parameters based on the specified domain.
@@ -33,7 +33,7 @@ class BoundedTransform(Transform):
         """
         dom = torch.as_tensor(domain, dtype=dtype, device=device)
         param_size = self.param_size()
-        
+
         if dom.ndim == 0:
             lower = -torch.ones(param_size, dtype=dtype, device=device) * dom
             upper = torch.ones(param_size, dtype=dtype, device=device) * dom
@@ -47,19 +47,18 @@ class BoundedTransform(Transform):
             upper = dom[:, 1]
         else:
             raise ValueError(f"Unsupported domain tensor shape: {dom.shape}")
-        
+
         min_vals = torch.min(lower, upper)
         max_vals = torch.max(lower, upper)
         return min_vals, max_vals
 
-    def sample_param(self,batch_size,domain,device="cpu",dtype=torch.float32) -> torch.Tensor:
+    def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         """
         Sample a parameter for the transformation.
         :return: The sampled parameter.
         """
         low, up = self.calc_bounds(domain, dtype=dtype, device=device)
-        return torch.rand(batch_size,self.param_size(), device=device, dtype=dtype) * (up - low) + low
-
+        return torch.rand(batch_size, self.param_size(), device=device, dtype=dtype) * (up - low) + low
 
     def project_parameters(self, param: torch.Tensor, domain, reflect: bool = True) -> torch.Tensor:
         """
@@ -87,7 +86,6 @@ class BoundedTransform(Transform):
         period = 2 * span
         mod = torch.remainder(x, period)
         return torch.where(mod <= span, mod, period - mod) + lower
-
 
     def supports_sobol(self) -> bool:
         """
@@ -117,7 +115,8 @@ class BoundedTransform(Transform):
         lower, upper = self.calc_bounds(domain, dtype=sparam.dtype, device=sparam.device)
         # ensure shape matches
         if lower.numel() != sparam.shape[-1]:
-            raise ValueError(f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
+            raise ValueError(
+                f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
         span = upper - lower
         if self.log:
             # uniform in log-space of (param + 1)
@@ -167,7 +166,6 @@ class BoundedTransform(Transform):
 
         return params
 
-
     def default_neighbourhood_size(self, domain=None, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
         For bounded 2-vector representation: use per-parameter span (upper - lower).
@@ -178,4 +176,3 @@ class BoundedTransform(Transform):
             return torch.clamp((upper - lower).to(dtype=dtype, device=device), min=1e-8)
         else:
             return torch.full((self.param_size(),), 1.0, dtype=dtype, device=device)
-

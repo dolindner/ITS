@@ -1,11 +1,13 @@
 import torch
+
 from src.utils.helper import identity
-from src.utils.transforms.bounded_transform import BoundedTransform
 from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud
+from src.utils.transforms.bounded_transform import BoundedTransform
 
 
 class Shear2D(BoundedTransform):
     """General 2D shear with two parameters."""
+
     def __init__(self):
         super().__init__()
         self.dims = 2
@@ -26,13 +28,14 @@ class Shear2D(BoundedTransform):
     def param_size(self) -> int:
         return 2
 
-    def orbit(self, n_samples: int, domain,dim=0, extend: int = 0, shift: int = 0):
+    def orbit(self, n_samples: int, domain, dim=0, extend: int = 0, shift: int = 0):
         # Multi-param transform: no single-parameter orbit
         return None
 
 
 class Shear3D(BoundedTransform):
     """General 3D shear with six parameters."""
+
     def __init__(self):
         super().__init__()
         self.dims = 3
@@ -62,13 +65,14 @@ class Shear3D(BoundedTransform):
     def param_size(self) -> int:
         return 6
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0):
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0):
         # Multi-param transform: no single-parameter orbit
         return None
 
 
 class ShearSequential(BoundedTransform):
     """Computes a shear matrix via sequential composition of local shear matrices."""
+
     def __init__(self, dims: int):
         super().__init__()
         self.dims = dims
@@ -102,14 +106,14 @@ class ShearSequential(BoundedTransform):
         for i in range(1, K):
             S = torch.matmul(S, matrices_list[i])
 
-        H = torch.eye(n+1, dtype=param.dtype, device=param.device).expand(batch_size + (n+1, n+1)).clone()
+        H = torch.eye(n + 1, dtype=param.dtype, device=param.device).expand(batch_size + (n + 1, n + 1)).clone()
         H[..., :n, :n] = S
         return H
 
     def param_size(self) -> int:
         return self.dims * (self.dims - 1)
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0):
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0):
         # Multi-param transform: no single-parameter orbit
         return None
 
@@ -118,6 +122,7 @@ class ShearFull(BoundedTransform):
     """Computes a shear matrix by directly filling in all off-diagonal entries.
     Not really a shear.
     """
+
     def __init__(self, dims: int):
         super().__init__()
         self.dims = dims
@@ -131,7 +136,7 @@ class ShearFull(BoundedTransform):
                 break
         if n is None:
             raise ValueError("Invalid number of shear parameters for full shear.")
-            
+
         batch_size = param.shape[:-1]
         S = identity(batch_size, n, dtype=param.dtype, device=param.device)
         idx = 0
@@ -140,20 +145,21 @@ class ShearFull(BoundedTransform):
                 if i != j:
                     S[..., i, j] = param[..., idx]
                     idx += 1
-        H = identity(batch_size, n+1, dtype=param.dtype, device=param.device)
+        H = identity(batch_size, n + 1, dtype=param.dtype, device=param.device)
         H[..., :n, :n] = S
         return H
 
     def param_size(self) -> int:
         return self.dims * (self.dims - 1)
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0):
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0):
         # Multi-param transform: no single-parameter orbit
         return None
 
 
 class DirectedShear(BoundedTransform):
     """Shear directed by a specific parameter in a specific dimension."""
+
     def __init__(self, dims: int, parameter_index: int):
         super().__init__()
         self.dims = dims
@@ -163,7 +169,7 @@ class DirectedShear(BoundedTransform):
         degrees = int(self.dims * (self.dims - 1))
         shear_params = torch.zeros(*param.shape[:-1], degrees, dtype=param.dtype, device=param.device)
         shear_params[..., self.parameter_index] = param[..., 0]
-        
+
         if self.dims == 2:
             return Shear2D().matrix(shear_params)
         elif self.dims == 3:
@@ -174,18 +180,18 @@ class DirectedShear(BoundedTransform):
     def param_size(self) -> int:
         return 1
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0) -> torch.Tensor:
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0) -> torch.Tensor:
         # Reuse calc_bounds to properly parse domain
         low_p, high_p = self.calc_bounds(domain, dtype=torch.float32, device="cpu")
         low_p, high_p = low_p.squeeze(), high_p.squeeze()
-        
+
         # Create orbit samples
         total_samples = n_samples + 2 * extend
         spacing = (high_p - low_p) / (n_samples - 1) if n_samples > 1 else 0
         start = low_p - extend * spacing
         end = high_p + extend * spacing
         orbit = torch.linspace(start, end, total_samples, dtype=torch.float32, device="cpu")
-        if total_samples ==1:
+        if total_samples == 1:
             orbit = torch.tensor([(start + end) / 2], dtype=torch.float32, device="cpu")
 
         orbit = orbit + shift * spacing
@@ -196,6 +202,7 @@ class DirectedShear(BoundedTransform):
 
 class ShearScaled(BoundedTransform):
     """Shear repesented by L @ D @ L^T  (LTDL form). First paramtes are entries of D else are entries of L"""
+
     def __init__(self, dims: int):
         super().__init__()
         self.dims = dims
@@ -212,14 +219,16 @@ class ShearScaled(BoundedTransform):
         diag = param[..., :self.dims]
         D = torch.diag_embed(torch.exp(diag))  # positive diagonal
 
-        L = torch.eye(self.dims, device=param.device, dtype=param.dtype).expand(*batch_shape, self.dims, self.dims).clone()
+        L = torch.eye(self.dims, device=param.device, dtype=param.dtype).expand(*batch_shape, self.dims,
+                                                                                self.dims).clone()
         tril_indices = torch.tril_indices(row=self.dims, col=self.dims, offset=-1)
         L[..., tril_indices[0], tril_indices[1]] = param[..., self.dims:]
 
         SPD_core = L @ D @ L.transpose(-1, -2)
 
         # --- augment to (dims+1)x(dims+1) for affine ---
-        SPD = torch.eye(dim_affine, device=param.device, dtype=param.dtype).expand(*batch_shape, dim_affine, dim_affine).clone()
+        SPD = torch.eye(dim_affine, device=param.device, dtype=param.dtype).expand(*batch_shape, dim_affine,
+                                                                                   dim_affine).clone()
         SPD[..., :self.dims, :self.dims] = SPD_core
 
         return SPD
@@ -228,9 +237,8 @@ class ShearScaled(BoundedTransform):
         # Only params for the first `dims` dimensions
         return self.dims + (self.dims * (self.dims - 1)) // 2
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0):
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0):
         return None
-
 
 
 # Instantiate common transforms_old
@@ -252,10 +260,9 @@ ShearZY3D = DirectedShear(3, 5)
 ShearScaled2D = ShearScaled(2)
 ShearScaled3D = ShearScaled(3)
 
-
 if __name__ == "__main__":
     print("Testing gradient flow through class-based shear functions...")
-    
+
     # ------------ Test 1: 2D Shear Matrix ------------
     print("\n1. Testing 2D shear matrix with images:")
     param_2d = torch.randn(1, 2, requires_grad=True)
@@ -273,7 +280,7 @@ if __name__ == "__main__":
     fn_2d = lambda p: grid_resample(x_img_d, Shear2DGeneral.matrix(p))
     assert torch.autograd.gradcheck(fn_2d, (param_2d_d,), eps=1e-6, atol=1e-4), "2D shear gradcheck failed"
     print("✓ Numeric gradient check passed")
-    
+
     # ------------ Test 2: 3D Shear Matrix ------------
     print("\n2. Testing 3D shear matrix with point cloud:")
     param_3d = torch.randn(1, 6, requires_grad=True)  # 6 parameters for 3D shear
@@ -305,7 +312,8 @@ if __name__ == "__main__":
     # Numeric gradient check
     param_seq_2d_d = torch.randn(1, 2, dtype=torch.double, requires_grad=True)
     fn_seq_2d = lambda p: grid_resample(x_img_d, ShearSequential2D.matrix(p))
-    assert torch.autograd.gradcheck(fn_seq_2d, (param_seq_2d_d,), eps=1e-6, atol=1e-4), "Sequential 2D shear gradcheck failed"
+    assert torch.autograd.gradcheck(fn_seq_2d, (param_seq_2d_d,), eps=1e-6,
+                                    atol=1e-4), "Sequential 2D shear gradcheck failed"
     print("✓ Numeric gradient check passed")
 
     # ------------ Test 4: Sequential Shear Matrix with 3D ------------
@@ -321,9 +329,10 @@ if __name__ == "__main__":
     # Numeric gradient check
     param_seq_3d_d = torch.randn(1, 6, dtype=torch.double, requires_grad=True)
     fn_seq_3d = lambda p: transform_3d_point_cloud(x_pc_d, ShearSequential3D.matrix(p))
-    assert torch.autograd.gradcheck(fn_seq_3d, (param_seq_3d_d,), eps=1e-6, atol=1e-4), "Sequential 3D shear gradcheck failed"
+    assert torch.autograd.gradcheck(fn_seq_3d, (param_seq_3d_d,), eps=1e-6,
+                                    atol=1e-4), "Sequential 3D shear gradcheck failed"
     print("✓ Numeric gradient check passed")
-    
+
     # ------------ Test 5: Full Shear Matrix with 2D ------------
     print("\n5. Testing full shear matrix with 2D images:")
     param_full_2d = torch.randn(1, 2, requires_grad=True)  # 2 parameters for 2D full shear
@@ -337,9 +346,10 @@ if __name__ == "__main__":
     # Numeric gradient check
     param_full_2d_d = torch.randn(1, 2, dtype=torch.double, requires_grad=True)
     fn_full_2d = lambda p: grid_resample(x_img_d, ShearFull2D.matrix(p))
-    assert torch.autograd.gradcheck(fn_full_2d, (param_full_2d_d,), eps=1e-6, atol=1e-4), "Full 2D shear gradcheck failed"
+    assert torch.autograd.gradcheck(fn_full_2d, (param_full_2d_d,), eps=1e-6,
+                                    atol=1e-4), "Full 2D shear gradcheck failed"
     print("✓ Numeric gradient check passed")
-    
+
     # ------------ Test 6: Full Shear Matrix with 3D ------------
     print("\n6. Testing full shear matrix with 3D point cloud:")
     param_full_3d = torch.randn(1, 6, requires_grad=True)  # 6 parameters for 3D full shear
@@ -353,9 +363,10 @@ if __name__ == "__main__":
     # Numeric gradient check
     param_full_3d_d = torch.randn(1, 6, dtype=torch.double, requires_grad=True)
     fn_full_3d = lambda p: transform_3d_point_cloud(x_pc_d, ShearFull3D.matrix(p))
-    assert torch.autograd.gradcheck(fn_full_3d, (param_full_3d_d,), eps=1e-6, atol=1e-4), "Full 3D shear gradcheck failed"
+    assert torch.autograd.gradcheck(fn_full_3d, (param_full_3d_d,), eps=1e-6,
+                                    atol=1e-4), "Full 3D shear gradcheck failed"
     print("✓ Numeric gradient check passed")
-    
+
     # ------------ Test 7: Directed Shear Matrix ------------
     print("\n7. Testing directed shear matrix with images:")
     param_dir = torch.randn(1, 1, requires_grad=True)
@@ -371,51 +382,51 @@ if __name__ == "__main__":
     fn_dir = lambda p: grid_resample(x_img_d, ShearX2D.matrix(p))
     assert torch.autograd.gradcheck(fn_dir, (param_dir_d,), eps=1e-6, atol=1e-4), "Directed shear gradcheck failed"
     print("✓ Numeric gradient check passed")
-    
+
     # ------------ Test 8: Orbit Generation for Single Parameter Transforms ------------
     print("\n8. Testing orbit generation for single-parameter transforms_old:")
     orbit_x_2d = ShearX2D.orbit(10, 1.0)
     assert orbit_x_2d is not None, "ShearX2D orbit is None"
     assert orbit_x_2d.shape == (10, 1), f"ShearX2D orbit has incorrect shape: {orbit_x_2d.shape}"
-    
+
     orbit_y_2d = ShearY2D.orbit(10, 1.0)
     assert orbit_y_2d is not None, "ShearY2D orbit is None"
     assert orbit_y_2d.shape == (10, 1), f"ShearY2D orbit has incorrect shape: {orbit_y_2d.shape}"
-    
+
     orbit_xy_3d = ShearXY3D.orbit(10, 1.0)
     assert orbit_xy_3d is not None, "ShearXY3D orbit is None"
     assert orbit_xy_3d.shape == (10, 1), f"ShearXY3D orbit has incorrect shape: {orbit_xy_3d.shape}"
     print("✓ Orbit generation tests passed")
-    
+
     # ------------ Test 9: Parameter Bounds and Projections ------------
     print("\n9. Testing parameter bounds and projections:")
     # Test with a domain of [-1, 1]
     domain = 1.0
     # Create parameters outside the domain
     out_of_bounds = torch.tensor([[1.5, -1.5]], dtype=torch.float32)
-    
+
     # Test calc_bounds
     lower, upper = Shear2DGeneral.calc_bounds(domain)
     print(f"Domain {domain} → bounds: [{lower}, {upper}]")
     assert torch.allclose(lower, torch.tensor([-1.0, -1.0])), "Incorrect lower bounds"
     assert torch.allclose(upper, torch.tensor([1.0, 1.0])), "Incorrect upper bounds"
-    
+
     # Test project_parameters with reflection
     reflected = Shear2DGeneral.project_parameters(out_of_bounds, domain, reflect=True)
     print(f"Original: {out_of_bounds}, reflected: {reflected}")
     assert torch.all((reflected >= -1.0) & (reflected <= 1.0)), "Reflection failed to constrain parameters"
-    
+
     # Test project_parameters with clamping
     clamped = Shear2DGeneral.project_parameters(out_of_bounds, domain, reflect=False)
     print(f"Original: {out_of_bounds}, clamped: {clamped}")
     assert torch.allclose(clamped, torch.tensor([[1.0, -1.0]])), "Clamping failed"
-    
+
     # Test with single-parameter transform
     single_param = torch.tensor([[2.5]], dtype=torch.float32)
     reflected_single = ShearX2D.project_parameters(single_param, domain, reflect=True)
     print(f"Original: {single_param}, reflected: {reflected_single}")
     assert torch.all((reflected_single >= -1.0) & (reflected_single <= 1.0)), "Single parameter reflection failed"
-    
+
     print("✓ Parameter bounds and projections tests passed")
-    
+
     print("\nAll shear gradient and orbit checks passed!")

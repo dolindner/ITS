@@ -1,12 +1,11 @@
 from copy import deepcopy
 
 import torch
-from torch_scatter import scatter_mean, scatter_max
-from torch_geometric.data import Data, Batch
-import torch
 import torch.nn.functional as F
-from torch_scatter import scatter_add
 from torch_geometric.data import Batch
+from torch_geometric.data import Data
+from torch_scatter import scatter_add
+from torch_scatter import scatter_mean, scatter_max
 
 
 class GeometricLabelDatasetWrapper(torch.utils.data.Dataset):
@@ -40,8 +39,8 @@ class GeometricLabelDatasetWrapper(torch.utils.data.Dataset):
         return data, label
 
 
-import torch
 from torch.utils.data import Dataset
+
 
 class GeometricsDatasetWrapper(Dataset):
     """
@@ -49,6 +48,7 @@ class GeometricsDatasetWrapper(Dataset):
     This only works when the underlying dataset returns a Data object with a pos attribute that have
     the same number of points.
     """
+
     def __init__(self, dataset):
         self.dataset = dataset  # dataset is expected to be a list or another Dataset of torch_geometric.data.Data objects
 
@@ -63,12 +63,14 @@ class GeometricsDatasetWrapper(Dataset):
 import torch
 from torch.utils.data import Dataset
 
+
 class TensorGeometricsDatasetWrapper(Dataset):
     """
     Wrapper that wraps around a torch_geometric Dataset and returns the position and label to use with normal dataloaders.
     This only works when the underlying dataset returns a Data object with a pos attribute that have
     the same number of points.
     """
+
     def __init__(self, dataset):
         self.dataset = dataset  # dataset is expected to be a list or another Dataset of torch_geometric.data.Data objects
 
@@ -76,7 +78,7 @@ class TensorGeometricsDatasetWrapper(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        data,y = self.dataset[idx]
+        data, y = self.dataset[idx]
         return data.pos, y  # returns only the position and label (can be modified depending on model input)
 
 
@@ -85,6 +87,7 @@ class TensorGeometricModelWrapper(torch.nn.Module):
     Wrapper for a torch_geometric model that receives a tuple of (pos, y) as input and creates
     a Data object from it that is passed to the model.
     """
+
     def __init__(self, model):
         super(TensorGeometricModelWrapper, self).__init__()
         self.model = model  # model should be a torch_geometric.nn GNN model
@@ -104,9 +107,9 @@ class BatchNormalizeScale(torch.nn.Module):
     """
     Batch normalization and scaling of the input data to [-1, 1].
     """
+
     def __init__(self):
         super().__init__()
-
 
     def single_data(self, data: Data) -> Data:
         data = self.center(data)
@@ -134,7 +137,6 @@ class BatchNormalizeScale(torch.nn.Module):
         data.pos = pos * scale[batch_idx]
 
         return data
-
 
     def forward(self, data):
         # Handle both single Data and batched Batch objects
@@ -197,11 +199,10 @@ class BatchNormalizeScaleEuclidean(torch.nn.Module):
         return self.single_data(data)
 
 
-
-
 class NormalizeRotationBatch:
     """Batch version that matches PyG's NormalizeRotation"""
-    def __init__(self, max_points: int = -1, sort: bool = False,ensure_proper_rotation: bool = False):
+
+    def __init__(self, max_points: int = -1, sort: bool = False, ensure_proper_rotation: bool = False):
         self.max_points = max_points
         self.sort = sort
         self.ensure_proper_rotation = ensure_proper_rotation
@@ -235,7 +236,6 @@ class NormalizeRotationBatch:
                 indices = e_real.argsort(descending=True)
                 v = v.t()[indices].t()
 
-
             # Ensure proper rotation
             if self.ensure_proper_rotation:
                 if torch.det(v) < 0:
@@ -255,8 +255,6 @@ class NormalizeRotationBatch:
         return batch
 
 
-
-
 class NormalizeRotationVectorized:
     """
     Vectorized batch version of PCA-based orientation normalization.
@@ -266,6 +264,7 @@ class NormalizeRotationVectorized:
     transformation is a proper rotation (determinant = +1), and optional
     random sign augmentation during training.
     """
+
     def __init__(self,
                  sort: bool = False,
                  ensure_proper_rotation: bool = True,
@@ -383,6 +382,7 @@ class NormalizeRotationVectorizedModule(torch.nn.Module):
     Thin nn.Module wrapper around NormalizeRotationVectorized so it can be used in nn.Sequential.
     The randomization behavior follows the training/eval state of the module.
     """
+
     def __init__(self, sort: bool = False,
                  ensure_proper_rotation: bool = True,
                  fix_sign: bool = False,
@@ -399,15 +399,13 @@ class NormalizeRotationVectorizedModule(torch.nn.Module):
         return self._transform.forward(batch, randomize=self.training and self.randomize)
 
 
-
-
 def random_rotation_matrix(device='cpu', dtype=torch.float32):
     """Generate a random 3D rotation matrix using axis-angle."""
     u = torch.rand(3, device=device, dtype=dtype)
     theta = u[0] * 2 * torch.pi
     phi = u[1] * 2 * torch.pi
     z = u[2] * 2 - 1
-    r = torch.sqrt(1 - z**2)
+    r = torch.sqrt(1 - z ** 2)
     x = r * torch.cos(phi)
     y = r * torch.sin(phi)
     axis = torch.tensor([x, y, z], device=device, dtype=dtype)
@@ -417,6 +415,7 @@ def random_rotation_matrix(device='cpu', dtype=torch.float32):
     R = torch.eye(3, device=device, dtype=dtype) + torch.sin(theta) * K + (1 - torch.cos(theta)) * K @ K
     return R
 
+
 def add_to_canonical_set(pos, canonical_set, tol=1e-5):
     """Add a point cloud to the set of canonical forms with tolerance."""
     pos_flat = pos.flatten()
@@ -425,18 +424,19 @@ def add_to_canonical_set(pos, canonical_set, tol=1e-5):
             return  # Already in the set
     canonical_set.append(pos_flat)
 
+
 class TransformParamDataset(torch.utils.data.Dataset):
-        def __init__(self, base_dataset, target_params):
-            self.base_dataset = base_dataset
-            self.target_params = target_params
+    def __init__(self, base_dataset, target_params):
+        self.base_dataset = base_dataset
+        self.target_params = target_params
 
-        def __len__(self):
-            return len(self.base_dataset)
+    def __len__(self):
+        return len(self.base_dataset)
 
-        def __getitem__(self, idx):
-            x, y = self.base_dataset[idx]
-            target_params = self.target_params[idx]
-            return x, target_params,y
+    def __getitem__(self, idx):
+        x, y = self.base_dataset[idx]
+        target_params = self.target_params[idx]
+        return x, target_params, y
 
 
 if __name__ == "__main__":
@@ -447,7 +447,8 @@ if __name__ == "__main__":
     num_rotations = 100  # How many arbitrary rotations for eval mode
     tol = 1e-5
 
-    norm_module = NormalizeRotationVectorizedModule(randomize=False, ensure_proper_rotation=False,sort=True, fix_sign=True)
+    norm_module = NormalizeRotationVectorizedModule(randomize=False, ensure_proper_rotation=False, sort=True,
+                                                    fix_sign=True)
 
     # Generate a single random cloud
     pos = torch.randn(num_points, 3)
@@ -480,8 +481,6 @@ if __name__ == "__main__":
     print(f"Eval mode unique canonical forms (after rotations): {len(eval_set)}")
     print("Expected: 48 if randomize + no det, 8 if non-random + no det, 4 if non-random + det=+1")
 
-
-
     # Create two simple clouds
     for i in range(50):
         cloud1 = Data(pos=torch.rand(10, 3))
@@ -502,16 +501,15 @@ if __name__ == "__main__":
         norm_vec = NormalizeRotationVectorized(max_points=-1, sort=False)
         batch_vec = norm_vec.forward(batch_vec)
         # Compare to PyG reference
-        #first two cant exact match due to sign ambiguity of eigenvectors
+        # first two cant exact match due to sign ambiguity of eigenvectors
         print("Loop vs PyG max diff:", (batch_loop.pos - target_positions).abs().max())
         print("Vectorized vs PyG max diff:", (batch_vec.pos - target_positions).abs().max())
 
         print("Loop vs Vectorized max diff:", (batch_loop.pos - batch_vec.pos).abs().max())
 
-
         assert torch.allclose(batch_vec.pos, batch_loop.pos, atol=1e-4)
 
-    #print the pos
+    # print the pos
     print("PyG positions:\n", target_positions)
     print("Loop positions:\n", batch_loop.pos)
     print("Vectorized positions:\n", batch_vec.pos)

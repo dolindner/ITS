@@ -1,19 +1,13 @@
+from typing import Optional, Union, Callable, Tuple, Any
+
 import torch
-import torch.nn.functional as F
-from optree import tree_map
-from torch.utils.data import TensorDataset, DataLoader, Dataset, Sampler
-import pytorch_lightning as pl
-from typing import Optional, Union, Callable, List, Tuple, Any, Literal
-import random
-from confidence.input_transform import InputTransform
-
-
 
 
 def _get_at_path(tree: Any, path: Tuple[Union[int, str], ...]) -> Any:
     for key in path:
         tree = tree[key]
     return tree
+
 
 def _set_at_path(tree: Any, path: Tuple[Union[int, str], ...], value: Any) -> Any:
     if not path:
@@ -31,6 +25,7 @@ def _set_at_path(tree: Any, path: Tuple[Union[int, str], ...], value: Any) -> An
         return tree
     return tree
 
+
 class BatchNegativeSampler(torch.nn.Module):
     """
         Samples examples that are in distribution (speak not transformed) and negative
@@ -47,17 +42,18 @@ class BatchNegativeSampler(torch.nn.Module):
             number_of_negatives: Number of negative samples to generate per original positive sample.
             return_params: Whether to return the transformation matrices along with the modified batch.
         """
+
     def __init__(
-        self,
-        strategy,
-        x_index: Union[int, Tuple[Union[int, str], ...]] = 0,
-        y_index: Union[int, Tuple[Union[int, str], ...]] = 1,
-        negative_value: Union[int, float] = -1,
-        transform_true_function=None,
-        augment_function: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-        decision_strategy=None,
-        number_of_negatives: int = 1,
-        return_params: bool = False,
+            self,
+            strategy,
+            x_index: Union[int, Tuple[Union[int, str], ...]] = 0,
+            y_index: Union[int, Tuple[Union[int, str], ...]] = 1,
+            negative_value: Union[int, float] = -1,
+            transform_true_function=None,
+            augment_function: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+            decision_strategy=None,
+            number_of_negatives: int = 1,
+            return_params: bool = False,
     ):
         super().__init__()
         self.strategy = strategy
@@ -70,9 +66,8 @@ class BatchNegativeSampler(torch.nn.Module):
         self.number_of_negatives = number_of_negatives
         self.return_params = return_params
 
-
     @torch.no_grad()
-    def forward(self, batch: Any,seed=None):
+    def forward(self, batch: Any, seed=None):
         if isinstance(batch, torch.Tensor):
             raise ValueError("BatchNegativeSampler expects a structured batch, not a simple tensor.")
         X = _get_at_path(batch, self.x_index)
@@ -99,7 +94,7 @@ class BatchNegativeSampler(torch.nn.Module):
 
         if self.return_params:
             # sample_and_params must return (samples, transform_matrix)
-            sampled = [self.strategy.sample_and_params(X,seed=seed) for _ in range(self.number_of_negatives)]
+            sampled = [self.strategy.sample_and_params(X, seed=seed) for _ in range(self.number_of_negatives)]
             X_neg_list, T_neg_list = zip(*sampled)  # tuples of tensors
             X_neg = torch.cat(X_neg_list, dim=0)
             # Identity (positive) transform
@@ -107,7 +102,7 @@ class BatchNegativeSampler(torch.nn.Module):
             # Concatenate transforms_old so we return one tensor, not a tuple
             T_all = torch.cat([T_pos, *T_neg_list], dim=0)
         else:
-            X_neg = torch.cat([self.strategy.sample(X,seed=seed) for _ in range(self.number_of_negatives)], dim=0)
+            X_neg = torch.cat([self.strategy.sample(X, seed=seed) for _ in range(self.number_of_negatives)], dim=0)
 
         X_pos = self.transform_true_function(X) if self.transform_true_function else X
         both = torch.cat([X_pos, X_neg], dim=0)  # positives first
@@ -137,4 +132,3 @@ class BatchNegativeSampler(torch.nn.Module):
             # Return transforms_old alongside modified batch
             return modified_batch, T_all
         return modified_batch
-

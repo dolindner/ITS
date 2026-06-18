@@ -1,21 +1,22 @@
-import torch
 import math
-from src.utils.transformation_problem import TransformationProblem
+
+import torch
 
 from search.base_opt import BaseOptimizer
+from src.utils.transformation_problem import TransformationProblem
 
 
 class ParallelSimulatedAnnealing(BaseOptimizer):
     def __init__(
-        self,
-        initial_temp=100.0,
-        cooling_rate=0.95,
-        max_iterations=1000,
-        parallel_runs=4,
-        reinit_interval=9999999999999,
-        reinit_amount=0.0,
-        project_param=True,
-        neighbor_hood_size=0.1,
+            self,
+            initial_temp=100.0,
+            cooling_rate=0.95,
+            max_iterations=1000,
+            parallel_runs=4,
+            reinit_interval=9999999999999,
+            reinit_amount=0.0,
+            project_param=True,
+            neighbor_hood_size=0.1,
     ):
         """
         Args:
@@ -94,7 +95,7 @@ class ParallelSimulatedAnnealing(BaseOptimizer):
             x_repeated = x.repeat_interleave(self.parallel_runs, dim=0)
             y_repeated = y.repeat_interleave(self.parallel_runs, dim=0) if y is not None else None
 
-            current_error, other_data = transformation_problem.calculate_error(x_repeated, current_param,y=y_repeated)
+            current_error, other_data = transformation_problem.calculate_error(x_repeated, current_param, y=y_repeated)
             best_param = current_param.clone()
             best_error = current_error.clone()
             best_other_data = other_data.clone()

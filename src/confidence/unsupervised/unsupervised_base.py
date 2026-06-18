@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Union, Tuple, Any
+from typing import Optional, Union
 
 import numpy as np
 import torch
-from pytorch_lightning.utilities.types import STEP_OUTPUT
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
+
 from confidence.base_confidence import ConfidenceModule
 from confidence.input_transform import InputTransform
+
 
 class ClassicConfidenceBase(ConfidenceModule, ABC):
     """
@@ -22,9 +23,9 @@ class ClassicConfidenceBase(ConfidenceModule, ABC):
         self.input_transform = input_transform
 
     def fit(
-        self,
-        data: Union[torch.Tensor, DataLoader],
-        y: Optional[torch.Tensor] = None
+            self,
+            data: Union[torch.Tensor, DataLoader],
+            y: Optional[torch.Tensor] = None
     ) -> "ClassicConfidenceBase":
         # Gather all x and optional y into full tensors
         Y = None
@@ -59,9 +60,9 @@ class ClassicConfidenceBase(ConfidenceModule, ABC):
 
     @abstractmethod
     def _fit(
-        self,
-        x: torch.Tensor,
-        y: Optional[torch.Tensor] = None
+            self,
+            x: torch.Tensor,
+            y: Optional[torch.Tensor] = None
     ) -> "ClassicConfidenceBase":
         """
         Implement fitting logic on full tensors.
@@ -84,13 +85,14 @@ class ClassicConfidenceBase(ConfidenceModule, ABC):
     def to(self: "ClassicConfidenceBase", *args, **kwargs) -> "ClassicConfidenceBase":
         return super().to(*args, **kwargs)
 
-    def cuda(self: "ClassicConfidenceBase", device: Optional[Union[int, torch.device]] = None) -> "ClassicConfidenceBase":
+    def cuda(self: "ClassicConfidenceBase",
+             device: Optional[Union[int, torch.device]] = None) -> "ClassicConfidenceBase":
         return super().cuda(device)
 
     def cpu(self: "ClassicConfidenceBase") -> "ClassicConfidenceBase":
         return super().cpu()
 
-    def save(self,file_path: str) -> None:
+    def save(self, file_path: str) -> None:
         """
         Save the model state to a file.
         """
@@ -102,7 +104,8 @@ class ClassicConfidenceBase(ConfidenceModule, ABC):
         """
         self.load_state_dict(torch.load(file_path))
 
-#TODO can this be removed am i using this even?
+
+# TODO can this be removed am i using this even?
 import torch
 from abc import ABC, abstractmethod
 from torch.utils.data import DataLoader, TensorDataset
@@ -110,6 +113,7 @@ import pytorch_lightning as pl
 from confidence.base_confidence import ConfidenceModule
 from confidence.input_transform import InputTransform
 from typing import Optional, Union, Dict, Any
+
 
 class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
     """
@@ -120,36 +124,33 @@ class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
     """
 
     def __init__(
-        self,
-        input_transform: Optional[InputTransform] = None,
-        trainer_kwargs: Optional[Dict[str, Any]] = None,
-        dataloader_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            input_transform: Optional[InputTransform] = None,
+            trainer_kwargs: Optional[Dict[str, Any]] = None,
+            dataloader_kwargs: Optional[Dict[str, Any]] = None,
             optimizer_type: Optional[torch.optim.Optimizer] = None,
             optimizer_kwargs: Optional[Dict[str, Any]] = None,
             negative_sampling_module: Optional[Any] = None
     ):
         super().__init__()
         self.input_transform = input_transform
-        self.trainer_kwargs = trainer_kwargs or {"max_epochs":10}
+        self.trainer_kwargs = trainer_kwargs or {"max_epochs": 10}
         self.dataloader_kwargs = dataloader_kwargs or {}
         self.optimizer_type = optimizer_type or torch.optim.Adam
         self.optimizer_kwargs = optimizer_kwargs or {"lr": 1e-3}
-        self.negative_sampling_module= negative_sampling_module
+        self.negative_sampling_module = negative_sampling_module
         self.feature_extractor = None
         if negative_sampling_module is not None:
-            #check if attribute exists
+            # check if attribute exists
             if hasattr(negative_sampling_module.strategy, 'feature_extractor'):
                 self.feature_extractor = self.negative_sampling_module.strategy.feature_extractor if negative_sampling_module else None
 
         self.deterministic_val = False
 
-
-
-
     def fit(
-        self,
-        data: Union[torch.Tensor, DataLoader],
-        y: Optional[torch.Tensor] = None,
+            self,
+            data: Union[torch.Tensor, DataLoader],
+            y: Optional[torch.Tensor] = None,
             val_data: Optional[Union[torch.Tensor, DataLoader]] = None,
             val_y: Optional[torch.Tensor] = None
     ) -> "MLConfidenceBase":
@@ -193,8 +194,8 @@ class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
             images = batch[0].to(self.device)
 
             images, y = self.negative_sampling_module((images, y))
-            #TODO can be made more efficient
-            x =  self.feature_extractor(images)
+            # TODO can be made more efficient
+            x = self.feature_extractor(images)
             if self.input_transform:
                 x = self.input_transform(x)
         else:
@@ -204,7 +205,6 @@ class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
 
         return self._training_step((x, y), batch_idx)
 
-
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         # Unpack and transform inputs
         x = batch[0].to(self.device)
@@ -213,16 +213,17 @@ class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
         if self.feature_extractor is not None:
             images = batch[0].to(self.device)
 
-            images, y = self.negative_sampling_module((images, y),seed=batch_idx if self.deterministic_val else None)
-            #TODO can be made more efficient
-            x =  self.feature_extractor(images)
+            images, y = self.negative_sampling_module((images, y), seed=batch_idx if self.deterministic_val else None)
+            # TODO can be made more efficient
+            x = self.feature_extractor(images)
             if self.input_transform:
                 x = self.input_transform(x)
         else:
             if self.input_transform:
                 x = self.input_transform(x)
-            x, y = self.negative_sampling_module((x, y),seed=batch_idx if self.deterministic_val else None) if self.negative_sampling_module else (x, y)
-
+            x, y = self.negative_sampling_module((x, y),
+                                                 seed=batch_idx if self.deterministic_val else None) if self.negative_sampling_module else (
+                x, y)
 
         return self._validation_step((x, y), batch_idx)
 
@@ -245,5 +246,3 @@ class MLConfidenceBase(pl.LightningModule, ConfidenceModule, ABC):
         """
         Subclasses implement this to compute confidence given transformed x (and y if needed).
         """
-
-

@@ -1,13 +1,17 @@
 from typing import Optional, List, Union
-import torch
-from confidence.input_transform import InputTransform
-from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
-from pytorch_ood.detector.mahalanobis import Mahalanobis
-from torch import device, Tensor
-from confidence.unsupervised.classic.nn_pytorch import DistanceConfidence, _remap_labels_to_indices, _compute_per_class_means_inv_covs, _compute_global_mean_inv_cov
-import torch.nn.functional as F
 
-#TODO remove unused cases namely low rank and cov mode.
+import torch
+import torch.nn.functional as F
+from pytorch_ood.detector.mahalanobis import Mahalanobis
+from torch import device
+
+from confidence.input_transform import InputTransform
+from confidence.unsupervised.classic.nn_pytorch import DistanceConfidence, _remap_labels_to_indices, \
+    _compute_per_class_means_inv_covs, _compute_global_mean_inv_cov
+from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
+
+
+# TODO remove unused cases namely low rank and cov mode.
 class PrototypeMahalanobisConfidence(DistanceConfidence):
     """
     Mahalanobis distance using DistanceConfidence that is more general and supports features like
@@ -29,8 +33,8 @@ class PrototypeMahalanobisConfidence(DistanceConfidence):
     def __init__(self,
                  eps: float = 1e-6,
                  shared_covariance: bool = True,
-                 use_raw_scatter: bool = False, #matches pytorch OOD behavior
-                 cov_mode: str = "full",     # "full" | "diag" | "lowrank"
+                 use_raw_scatter: bool = False,  # matches pytorch OOD behavior
+                 cov_mode: str = "full",  # "full" | "diag" | "lowrank"
                  low_rank_r: int = 64,
                  **kwargs):
         super().__init__(**kwargs)
@@ -70,7 +74,7 @@ class PrototypeMahalanobisConfidence(DistanceConfidence):
             if self.shared_covariance:
                 # Compute residuals from class means
                 residuals = x_f32 - class_means_f32[y_idx]
-                
+
                 if self.cov_mode == "diag":
                     # Direct diagonal computation: variance per feature
                     denom = N if self.use_raw_scatter else max(1, N - C)
@@ -179,12 +183,11 @@ class PrototypeMahalanobisConfidence(DistanceConfidence):
                 temp = torch.einsum('ncd,cde->nce', diff, inv_covs)
                 sq = (temp * diff).sum(-1)
 
-
         dist = torch.sqrt(sq.clamp(min=0)).min(dim=1).values
         return dist
 
 
-#reference implementation
+# reference implementation
 class MahalanobisConfidence(ClassicConfidenceBase):
     """
     Wraps pytorch_ood.detector.Mahalanobis into a ClassicConfidenceBase.
@@ -201,11 +204,11 @@ class MahalanobisConfidence(ClassicConfidenceBase):
     """
 
     def __init__(
-        self,
-        eps: float = 0,
-        norm_std: Optional[List[float]] = None,
-        input_transform: Optional[InputTransform] = None,
-        map_function = None,
+            self,
+            eps: float = 0,
+            norm_std: Optional[List[float]] = None,
+            input_transform: Optional[InputTransform] = None,
+            map_function=None,
     ):
         super().__init__(input_transform=input_transform)
         # model=None since we operate directly on features
@@ -214,9 +217,9 @@ class MahalanobisConfidence(ClassicConfidenceBase):
         self.map_function = map_function or (lambda x: -x)
 
     def _fit(
-        self,
-        X: torch.Tensor,
-        y: Optional[torch.Tensor] = None
+            self,
+            X: torch.Tensor,
+            y: Optional[torch.Tensor] = None
     ) -> "MahalanobisConfidence":
         """
         Fit the wrapped Mahalanobis detector.
@@ -231,14 +234,14 @@ class MahalanobisConfidence(ClassicConfidenceBase):
         if y is None:
             raise ValueError("Mahalanobis requires labels to fit.")
         X, y = X, y
-        self.detector.fit_features(X, y,device=X.device)
+        self.detector.fit_features(X, y, device=X.device)
         self.fitted = True
         return self
 
     def _forward(
-        self,
-        x: torch.Tensor,
-        y=None
+            self,
+            x: torch.Tensor,
+            y=None
     ) -> torch.Tensor:
         """
         Predict mapped confidence for given features.
@@ -311,11 +314,13 @@ if __name__ == "__main__":
     new_mah_sample = PrototypeMahalanobisConfidence(eps=1e-6, shared_covariance=True, use_raw_scatter=False)
     new_mah_sample._fit(z, y)
 
-    new_mah_raw = PrototypeMahalanobisConfidence(eps=1e-6, shared_covariance=True, use_raw_scatter=True, confidence_function=lambda x: -x)
+    new_mah_raw = PrototypeMahalanobisConfidence(eps=1e-6, shared_covariance=True, use_raw_scatter=True,
+                                                 confidence_function=lambda x: -x)
     new_mah_raw._fit(z, y)
 
     # prototype with mahalanobis (kept for inspection only; NOT used to compare old)
     from confidence.unsupervised.classic.prototype import ClassPrototypeConfidence
+
     proto_mah = ClassPrototypeConfidence(metric="mahalanobis", mahalanobis_eps=1e-6, shared_covariance=True)
     proto_mah._fit(z, y)
 
@@ -363,13 +368,11 @@ if __name__ == "__main__":
 
     # --- COMPARE SCORES ---
     test_z = torch.randn(10, D)
-    raw_old = old_mah._forward(test_z)          # old raw scores (pytorch_ood)
+    raw_old = old_mah._forward(test_z)  # old raw scores (pytorch_ood)
     new_raw_like = new_mah_raw._forward(test_z)  # new raw-like
     new_sample_like = new_mah_sample._forward(test_z)  # new sample-like (for inspection only)
 
     print("\n=== Score comparison on test data ===")
-
-
 
     print("\nOld Mahalanobis (pytorch_ood) raw scores:", raw_old)
     print("New Mahalanobis (our raw-scatter) raw-like scores:", new_raw_like)
@@ -377,6 +380,7 @@ if __name__ == "__main__":
     print("Prototype Mahalanobis scores (for inspection only):", proto_mah._forward(test_z, None))
 
     # --- ASSERT: old raw == new_raw_like (compare raw->raw) ---
-    assert torch.allclose(raw_old, new_raw_like, atol=1e-5), "Old (pytorch_ood raw) should match new (raw-scatter) raw-like scores"
+    assert torch.allclose(raw_old, new_raw_like,
+                          atol=1e-5), "Old (pytorch_ood raw) should match new (raw-scatter) raw-like scores"
 
     print("Comparison passed: old (pytorch_ood raw) == new (raw-scatter) raw-like.")

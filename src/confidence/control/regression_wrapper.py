@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+
 from confidence.control.regression import RegressionConfidence
+
 
 class RegressionWrapper(nn.Module):
     """
@@ -8,6 +10,7 @@ class RegressionWrapper(nn.Module):
     It ensures the model is called only once to extract all features, which are then
     passed to RegressionConfidence for aggregation.
     """
+
     def __init__(self, model_wrapper: nn.Module, regression_confidence: RegressionConfidence):
         super().__init__()
         self.model_wrapper = model_wrapper

@@ -1,15 +1,13 @@
-import torch
-import torch.nn.functional as F
+from typing import Tuple, Callable, List
+
 import kornia
+import kornia as K
+import torch
 
 from src.utils.transforms.apply import grid_resample
-import torch
-import torch.nn.functional as F
-import kornia as K
-from typing import Tuple, Callable, List, Optional
 
 
-def small_affine_augment_2d(images, max_shift=1.0, max_angle=3.0, max_scale=0.04,resample_function=grid_resample):
+def small_affine_augment_2d(images, max_shift=1.0, max_angle=3.0, max_scale=0.04, resample_function=grid_resample):
     """
     Small augments to simulate some artficats from bilinear interpolation and small misalignments
     Args:
@@ -43,16 +41,16 @@ def small_affine_augment_2d(images, max_shift=1.0, max_angle=3.0, max_scale=0.04
 
     # normalize to PyTorch [-1,1] coordinates
     norm_mat = torch.tensor([
-        [2.0/(W-1), 0, -1],
-        [0, 2.0/(H-1), -1],
+        [2.0 / (W - 1), 0, -1],
+        [0, 2.0 / (H - 1), -1],
         [0, 0, 1]
-    ], device=device).unsqueeze(0).repeat(B,1,1)
+    ], device=device).unsqueeze(0).repeat(B, 1, 1)
 
     norm_mat_inv = torch.tensor([
-        [(W-1)/2.0, 0, (W-1)/2.0],
-        [0, (H-1)/2.0, (H-1)/2.0],
+        [(W - 1) / 2.0, 0, (W - 1) / 2.0],
+        [0, (H - 1) / 2.0, (H - 1) / 2.0],
         [0, 0, 1]
-    ], device=device).unsqueeze(0).repeat(B,1,1)
+    ], device=device).unsqueeze(0).repeat(B, 1, 1)
 
     # properly transform 3x3 matrices
     M_norm_3x3 = torch.bmm(norm_mat, torch.bmm(M_3x3, norm_mat_inv))
@@ -63,8 +61,10 @@ def small_affine_augment_2d(images, max_shift=1.0, max_angle=3.0, max_scale=0.04
 
 Tensor = torch.Tensor
 
+
 def _rand_params(shape, device, low, high):
     return torch.empty(shape, device=device).uniform_(low, high)
+
 
 @torch.no_grad()
 def random_gaussian_blur(x: Tensor,
@@ -101,6 +101,7 @@ def random_gaussian_blur(x: Tensor,
         out[mask_k] = blur
     return out
 
+
 @torch.no_grad()
 def random_unsharp_mask(x: Tensor,
                         p: float = 0.5,
@@ -126,6 +127,7 @@ def random_unsharp_mask(x: Tensor,
         sharpened = sharpened.clamp(0.0, 1.0)
     return torch.where(apply_mask.view(B, 1, 1, 1), sharpened, x)
 
+
 @torch.no_grad()
 def random_gaussian_noise(x: Tensor,
                           p: float = 0.5,
@@ -143,7 +145,8 @@ def random_gaussian_noise(x: Tensor,
     out = x + noise
     if clamp:
         out = out.clamp(0.0, 1.0)
-    return torch.where(mask.view(B,1,1,1), out, x)
+    return torch.where(mask.view(B, 1, 1, 1), out, x)
+
 
 @torch.no_grad()
 def random_contrast(x: Tensor,
@@ -157,11 +160,12 @@ def random_contrast(x: Tensor,
     mask = torch.rand(B, device=device) < p
     if not mask.any():
         return x
-    factors = _rand_params((B,1,1,1), device, *factor_range)
-    mean = x.mean(dim=(2,3), keepdim=True)
+    factors = _rand_params((B, 1, 1, 1), device, *factor_range)
+    mean = x.mean(dim=(2, 3), keepdim=True)
     out = (x - mean) * factors + mean
-    out = torch.where(mask.view(B,1,1,1), out, x)
+    out = torch.where(mask.view(B, 1, 1, 1), out, x)
     return out.clamp(0.0, 1.0)
+
 
 @torch.no_grad()
 def random_gamma(x: Tensor,
@@ -175,9 +179,10 @@ def random_gamma(x: Tensor,
     mask = torch.rand(B, device=device) < p
     if not mask.any():
         return x
-    gammas = _rand_params((B,1,1,1), device, *gamma_range)
+    gammas = _rand_params((B, 1, 1, 1), device, *gamma_range)
     out = (x.clamp(min=eps)) ** gammas
-    return torch.where(mask.view(B,1,1,1), out, x)
+    return torch.where(mask.view(B, 1, 1, 1), out, x)
+
 
 @torch.no_grad()
 def random_cutout(x: Tensor,
@@ -205,22 +210,25 @@ def random_cutout(x: Tensor,
         cut_w = max(1, int(W * scale))
         cy = torch.randint(0, H, (1,), device=device).item()
         cx = torch.randint(0, W, (1,), device=device).item()
-        y1 = max(0, cy - cut_h // 2); y2 = min(H, y1 + cut_h)
-        x1 = max(0, cx - cut_w // 2); x2 = min(W, x1 + cut_w)
-        out[b,:,y1:y2,x1:x2] = fill
+        y1 = max(0, cy - cut_h // 2);
+        y2 = min(H, y1 + cut_h)
+        x1 = max(0, cx - cut_w // 2);
+        x2 = min(W, x1 + cut_w)
+        out[b, :, y1:y2, x1:x2] = fill
     return out
+
 
 @torch.no_grad()
 def random_blur_or_sharpen(
-    x: torch.Tensor,
-    p: float = 0.4,
-    prob_blur: float = 0.5,           # fraction of affected samples that get blur; rest sharpen
-    blur_ks_choices=(3,5),
-    blur_sigma_range=(0.2,1.2),
-    usm_ksize=5,
-    usm_sigma_range=(0.5,1.5),
-    usm_amount_range=(0.5,1.3),
-    clamp: bool = True
+        x: torch.Tensor,
+        p: float = 0.4,
+        prob_blur: float = 0.5,  # fraction of affected samples that get blur; rest sharpen
+        blur_ks_choices=(3, 5),
+        blur_sigma_range=(0.2, 1.2),
+        usm_ksize=5,
+        usm_sigma_range=(0.5, 1.5),
+        usm_amount_range=(0.5, 1.3),
+        clamp: bool = True
 ) -> torch.Tensor:
     """
     Per sample choose: no-op, Gaussian blur, or unsharp mask (sharpen).
@@ -271,14 +279,16 @@ def random_blur_or_sharpen(
         blurred = blur_op(base).to(dtype=x.dtype)
         sharpened = base + amounts * (base - blurred)
         if clamp:
-            sharpened = sharpened.clamp(0,1)
+            sharpened = sharpened.clamp(0, 1)
         out[sharp_indices] = sharpened
 
     return out
 
+
 class ComposeAugmentations:
     def __init__(self, ops: List[Callable[[Tensor], Tensor]]):
         self.ops = ops
+
     @torch.no_grad()
     def __call__(self, x: Tensor) -> Tensor:
         for op in self.ops:
@@ -290,12 +300,15 @@ class ComposeAugmentations:
         Returns a callable that accepts (C,H,W) or (B,C,H,W).
         """
         parent = self
+
         @torch.no_grad()
         def _single(x: Tensor) -> Tensor:
             if x.dim() == 3:
                 return parent(x.unsqueeze(0)).squeeze(0)
             return parent(x)
+
         return _single
+
 
 def build_default_augmentations() -> ComposeAugmentations:
     return ComposeAugmentations([
@@ -309,8 +322,7 @@ def build_default_augmentations() -> ComposeAugmentations:
     ])
 
 
-
-#Single-sample wrappers for affine augments
+# Single-sample wrappers for affine augments
 @torch.no_grad()
 def small_affine_augment_2d_single(x: torch.Tensor, **kwargs):
     return small_affine_augment_2d(x.unsqueeze(0), **kwargs).squeeze(0)

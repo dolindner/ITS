@@ -1,12 +1,12 @@
 import torch
 
 from src.utils.helper import identity
-from src.utils.transforms.base import Transform
 from src.utils.transforms.bounded_transform import BoundedTransform
 
 
 class Translation(BoundedTransform):
     """Arbitrary D‐dimensional translation."""
+
     def __init__(self, dims: int):
         super().__init__()
         self.dims = dims
@@ -25,13 +25,13 @@ class Translation(BoundedTransform):
         translation_matrix[..., :dim, -1] = param
         return translation_matrix
 
-
     def param_size(self) -> int:
         return self.dims
 
 
 class DirectedTranslation(BoundedTransform):
     """Translation along one axis in D dimensions."""
+
     def __init__(self, dims: int, axis: int):
         super().__init__()
         self.dims = dims
@@ -42,8 +42,8 @@ class DirectedTranslation(BoundedTransform):
         vec = torch.zeros(*param.shape[:-1], self.dims, dtype=param.dtype, device=param.device)
         vec[..., self.axis] = param.squeeze(-1)
         batch = vec.shape[:-1]
-        I = torch.eye(self.dims+1, dtype=vec.dtype, device=vec.device)
-        T = I.expand(*batch, self.dims+1, self.dims+1).clone()
+        I = torch.eye(self.dims + 1, dtype=vec.dtype, device=vec.device)
+        T = I.expand(*batch, self.dims + 1, self.dims + 1).clone()
         T[..., :self.dims, -1] = vec
         return T
 
@@ -51,17 +51,14 @@ class DirectedTranslation(BoundedTransform):
         return 1
 
 
-
 # instantiate common transforms_old
-Translate2D       = Translation(2)
-Translate3D       = Translation(3)
-TranslateX2D      = DirectedTranslation(2, 0)
-TranslateY2D      = DirectedTranslation(2, 1)
-TranslateX3D      = DirectedTranslation(3, 0)
-TranslateY3D      = DirectedTranslation(3, 1)
-TranslateZ3D      = DirectedTranslation(3, 2)
-
-
+Translate2D = Translation(2)
+Translate3D = Translation(3)
+TranslateX2D = DirectedTranslation(2, 0)
+TranslateY2D = DirectedTranslation(2, 1)
+TranslateX3D = DirectedTranslation(3, 0)
+TranslateY3D = DirectedTranslation(3, 1)
+TranslateZ3D = DirectedTranslation(3, 2)
 
 if __name__ == "__main__":
     import torch

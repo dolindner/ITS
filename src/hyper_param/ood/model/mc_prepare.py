@@ -1,38 +1,37 @@
 from typing import Dict, Any, Optional
+
 import optuna
 import torch
-import torch.nn.functional as F
 
+from confidence.direct.logit_based import EnergyConfidence
+# new imports for criteria
+from confidence.direct.multi_samples import MutualInformationCriterion
+from confidence.direct.prob_based import MaximumSoftmaxConfidence, EntropyConfidence
 from confidence.model.mc_batch_norm import MonteCarloBatchNormConfidence
 from confidence.model.mc_droupout import MonteCarloDropoutConfidence, LastLayerMonteCarloDropoutConfidence
+from embedding_cache import LayerEmbeddingCache
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
     OOD_PROBLEM_FACTORIES,
 )
 from src.utils.transformation_problem import TransformationProblem
-from embedding_cache import LayerEmbeddingCache
-
-# new imports for criteria
-from confidence.direct.multi_samples import MutualInformationCriterion
-from confidence.direct.prob_based import MaximumSoftmaxConfidence, EntropyConfidence
-from confidence.direct.logit_based import EnergyConfidence
 
 
 def prepare_mc_methods(
-    model: torch.nn.Module,
-    transform_seq,
-    dataset_info,
-    architecture: str,
-    train_cache: Optional[LayerEmbeddingCache] = None,
-    mc_samples: int = 16,
-    criterion: str = "prob",
-    softmax: bool = True,    # deprecated
-    use_dropout: bool = True,
-    use_last_layer_dropout: bool = False,
-    use_batchnorm: bool = False,
-    device: torch.device = None,
-    mc_batch_size: int = 32,
+        model: torch.nn.Module,
+        transform_seq,
+        dataset_info,
+        architecture: str,
+        train_cache: Optional[LayerEmbeddingCache] = None,
+        mc_samples: int = 16,
+        criterion: str = "prob",
+        softmax: bool = True,  # deprecated
+        use_dropout: bool = True,
+        use_last_layer_dropout: bool = False,
+        use_batchnorm: bool = False,
+        device: torch.device = None,
+        mc_batch_size: int = 32,
 ) -> Dict[str, TransformationProblem]:
     """
     Build MC problems for dropout and batchnorm variants.
@@ -79,7 +78,7 @@ def prepare_mc_methods(
             confidence=conf_module,
             samples=mc_samples,
             average=average,
-            softmax=use_softmax,   # renamed parameter
+            softmax=use_softmax,  # renamed parameter
             index=None,
             parallel=False,
         )
@@ -89,7 +88,8 @@ def prepare_mc_methods(
                 mc_dropout.to(device)
             except Exception:
                 pass
-        problems["mc_dropout"] = TransformationProblem(mc_dropout, transform_seq, consolidate_method="consolidate_simple")
+        problems["mc_dropout"] = TransformationProblem(mc_dropout, transform_seq,
+                                                       consolidate_method="consolidate_simple")
 
     if use_last_layer_dropout:
         mc_dropout_last_layer = LastLayerMonteCarloDropoutConfidence(
@@ -105,7 +105,8 @@ def prepare_mc_methods(
                 mc_dropout_last_layer.to(device)
             except Exception:
                 pass
-        problems["mc_dropout_last_layer"] = TransformationProblem(mc_dropout_last_layer, transform_seq, consolidate_method="consolidate_simple")
+        problems["mc_dropout_last_layer"] = TransformationProblem(mc_dropout_last_layer, transform_seq,
+                                                                  consolidate_method="consolidate_simple")
 
     # Monte Carlo BatchNorm problem
     if use_batchnorm:
@@ -118,14 +119,14 @@ def prepare_mc_methods(
             device=device,
             average=average,
             index=None,
-            softmax=use_softmax,   # renamed parameter
+            softmax=use_softmax,  # renamed parameter
         )
         if device is not None:
             try:
                 mc_bn.to(device)
             except Exception:
                 pass
-        
+
         # Fit the MCBatchNorm model to populate batchnorm stats
         if train_cache is not None and hasattr(train_cache, "dataloader"):
             mc_bn.fit(train_cache.dataloader)
@@ -142,10 +143,11 @@ def prepare_mc_methods(
 def default_mc_dropout_prob_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 8,        "softmax_before_average": True,
+        "mc_samples": 8, "softmax_before_average": True,
         "use_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_prob_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -156,7 +158,9 @@ def sample_mc_dropout_prob_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                   **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -176,9 +180,10 @@ def create_mc_dropout_prob_problem(params: Dict[str, Any], model, transform_seq,
 def default_mc_dropout_mi_params() -> Dict[str, Any]:
     return {
         "criterion": "mutual_information",
-        "mc_samples": 8,        "use_dropout": True,
+        "mc_samples": 8, "use_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_mi_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -188,7 +193,9 @@ def sample_mc_dropout_mi_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                 **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -203,12 +210,14 @@ def create_mc_dropout_mi_problem(params: Dict[str, Any], model, transform_seq, d
     )
     return problems["mc_dropout"]
 
+
 def default_mc_dropout_energy_params() -> Dict[str, Any]:
     return {
         "criterion": "energy",
-        "mc_samples": 8,        "use_dropout": True,
+        "mc_samples": 8, "use_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_energy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -218,7 +227,9 @@ def sample_mc_dropout_energy_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                     **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -233,6 +244,7 @@ def create_mc_dropout_energy_problem(params: Dict[str, Any], model, transform_se
     )
     return problems["mc_dropout"]
 
+
 # --- MC Dropout (entropy) ---
 
 def default_mc_dropout_entropy_params() -> Dict[str, Any]:
@@ -244,6 +256,7 @@ def default_mc_dropout_entropy_params() -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
+
 def sample_mc_dropout_entropy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
         "criterion": "entropy",
@@ -253,7 +266,9 @@ def sample_mc_dropout_entropy_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                      **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -269,16 +284,18 @@ def create_mc_dropout_entropy_problem(params: Dict[str, Any], model, transform_s
     )
     return problems["mc_dropout"]
 
+
 # --- Last Layer MC Dropout ---
 
 def default_mc_dropout_last_layer_prob_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 64,        "softmax_before_average": True,
+        "mc_samples": 64, "softmax_before_average": True,
         "use_dropout": False,
         "use_last_layer_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_last_layer_prob_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -290,7 +307,9 @@ def sample_mc_dropout_last_layer_prob_params(trial: optuna.Trial) -> Dict[str, A
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_last_layer_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_last_layer_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                              **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -308,14 +327,14 @@ def create_mc_dropout_last_layer_prob_problem(params: Dict[str, Any], model, tra
     return problems["mc_dropout_last_layer"]
 
 
-
 def default_mc_dropout_last_layer_mi_params() -> Dict[str, Any]:
     return {
         "criterion": "mutual_information",
-        "mc_samples": 64,        "use_dropout": False,
+        "mc_samples": 64, "use_dropout": False,
         "use_last_layer_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_last_layer_mi_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -326,7 +345,9 @@ def sample_mc_dropout_last_layer_mi_params(trial: optuna.Trial) -> Dict[str, Any
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_last_layer_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_last_layer_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                            **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -342,13 +363,15 @@ def create_mc_dropout_last_layer_mi_problem(params: Dict[str, Any], model, trans
     )
     return problems["mc_dropout_last_layer"]
 
+
 def default_mc_dropout_last_layer_energy_params() -> Dict[str, Any]:
     return {
         "criterion": "energy",
-        "mc_samples": 64,        "use_dropout": False,
+        "mc_samples": 64, "use_dropout": False,
         "use_last_layer_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_last_layer_energy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -359,7 +382,9 @@ def sample_mc_dropout_last_layer_energy_params(trial: optuna.Trial) -> Dict[str,
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_last_layer_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_last_layer_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info,
+                                                architecture, **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -374,6 +399,7 @@ def create_mc_dropout_last_layer_energy_problem(params: Dict[str, Any], model, t
         device=kwargs.get("device"),
     )
     return problems["mc_dropout_last_layer"]
+
 
 # --- Last Layer MC Dropout (entropy) ---
 
@@ -387,6 +413,7 @@ def default_mc_dropout_last_layer_entropy_params() -> Dict[str, Any]:
         "use_batchnorm": False,
     }
 
+
 def sample_mc_dropout_last_layer_entropy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
         "criterion": "entropy",
@@ -397,7 +424,9 @@ def sample_mc_dropout_last_layer_entropy_params(trial: optuna.Trial) -> Dict[str
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_last_layer_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_last_layer_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info,
+                                                 architecture, **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -414,15 +443,17 @@ def create_mc_dropout_last_layer_entropy_problem(params: Dict[str, Any], model, 
     )
     return problems["mc_dropout_last_layer"]
 
+
 # --- MC BatchNorm ---
 
 def default_mc_batchnorm_prob_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 8,        "softmax_before_average": True,
+        "mc_samples": 8, "softmax_before_average": True,
         "use_dropout": False,
         "use_batchnorm": True,
     }
+
 
 def sample_mc_batchnorm_prob_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -434,7 +465,8 @@ def sample_mc_batchnorm_prob_params(trial: optuna.Trial) -> Dict[str, Any]:
     }
 
 
-def create_mc_batchnorm_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+def create_mc_batchnorm_prob_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                     **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -450,12 +482,14 @@ def create_mc_batchnorm_prob_problem(params: Dict[str, Any], model, transform_se
     )
     return problems["mc_batchnorm"]
 
+
 def default_mc_batchnorm_mi_params() -> Dict[str, Any]:
     return {
         "criterion": "mutual_information",
-        "mc_samples": 8,        "use_dropout": False,
+        "mc_samples": 8, "use_dropout": False,
         "use_batchnorm": True,
     }
+
 
 def sample_mc_batchnorm_mi_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -465,7 +499,9 @@ def sample_mc_batchnorm_mi_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": True,
     }
 
-def create_mc_batchnorm_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_batchnorm_mi_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                   **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -480,12 +516,14 @@ def create_mc_batchnorm_mi_problem(params: Dict[str, Any], model, transform_seq,
     )
     return problems["mc_batchnorm"]
 
+
 def default_mc_batchnorm_energy_params() -> Dict[str, Any]:
     return {
         "criterion": "energy",
-        "mc_samples": 8,        "use_dropout": False,
+        "mc_samples": 8, "use_dropout": False,
         "use_batchnorm": True,
     }
+
 
 def sample_mc_batchnorm_energy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -495,7 +533,9 @@ def sample_mc_batchnorm_energy_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": True,
     }
 
-def create_mc_batchnorm_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_batchnorm_energy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                       **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -510,6 +550,7 @@ def create_mc_batchnorm_energy_problem(params: Dict[str, Any], model, transform_
     )
     return problems["mc_batchnorm"]
 
+
 # --- MC BatchNorm (entropy) ---
 
 def default_mc_batchnorm_entropy_params() -> Dict[str, Any]:
@@ -521,6 +562,7 @@ def default_mc_batchnorm_entropy_params() -> Dict[str, Any]:
         "use_batchnorm": True,
     }
 
+
 def sample_mc_batchnorm_entropy_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
         "criterion": "entropy",
@@ -530,7 +572,9 @@ def sample_mc_batchnorm_entropy_params(trial: optuna.Trial) -> Dict[str, Any]:
         "use_batchnorm": True,
     }
 
-def create_mc_batchnorm_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_batchnorm_entropy_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                        **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -546,14 +590,16 @@ def create_mc_batchnorm_entropy_problem(params: Dict[str, Any], model, transform
     )
     return problems["mc_batchnorm"]
 
+
 # --- Additional: Best-criterion factories for MC Dropout / MC BatchNorm ---------
 
 def default_mc_dropout_best_criterion_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 8,        "use_dropout": True,
+        "mc_samples": 8, "use_dropout": True,
         "use_batchnorm": False,
     }
+
 
 def sample_mc_dropout_best_criterion_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -563,7 +609,9 @@ def sample_mc_dropout_best_criterion_params(trial: optuna.Trial) -> Dict[str, An
         "use_batchnorm": False,
     }
 
-def create_mc_dropout_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                             **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -583,9 +631,10 @@ def create_mc_dropout_best_criterion_problem(params: Dict[str, Any], model, tran
 def default_mc_batchnorm_best_criterion_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 8,        "use_dropout": False,
+        "mc_samples": 8, "use_dropout": False,
         "use_batchnorm": True,
     }
+
 
 def sample_mc_batchnorm_best_criterion_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -595,7 +644,9 @@ def sample_mc_batchnorm_best_criterion_params(trial: optuna.Trial) -> Dict[str, 
         "use_batchnorm": True,
     }
 
-def create_mc_batchnorm_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_batchnorm_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
+                                               **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -617,8 +668,9 @@ def create_mc_batchnorm_best_criterion_problem(params: Dict[str, Any], model, tr
 def default_mc_dropout_last_layer_best_criterion_params() -> Dict[str, Any]:
     return {
         "criterion": "prob",
-        "mc_samples": 8,        "use_last_layer_dropout": True,
+        "mc_samples": 8, "use_last_layer_dropout": True,
     }
+
 
 def sample_mc_dropout_last_layer_best_criterion_params(trial: optuna.Trial) -> Dict[str, Any]:
     return {
@@ -627,7 +679,9 @@ def sample_mc_dropout_last_layer_best_criterion_params(trial: optuna.Trial) -> D
         "use_last_layer_dropout": True,
     }
 
-def create_mc_dropout_last_layer_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
+
+def create_mc_dropout_last_layer_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info,
+                                                        architecture, **kwargs) -> TransformationProblem:
     problems = prepare_mc_methods(
         model=model,
         transform_seq=transform_seq,
@@ -651,7 +705,6 @@ OOD_DEFAULT_PARAM_FACTORIES["mc_dropout_prob"] = default_mc_dropout_prob_params
 OOD_PARAM_SAMPLERS["mc_dropout_prob"] = sample_mc_dropout_prob_params
 OOD_PROBLEM_FACTORIES["mc_dropout_prob"] = create_mc_dropout_prob_problem
 
-
 OOD_DEFAULT_PARAM_FACTORIES["mc_dropout_mi"] = default_mc_dropout_mi_params
 OOD_PARAM_SAMPLERS["mc_dropout_mi"] = sample_mc_dropout_mi_params
 OOD_PROBLEM_FACTORIES["mc_dropout_mi"] = create_mc_dropout_mi_problem
@@ -672,7 +725,6 @@ OOD_DEFAULT_PARAM_FACTORIES["mc_dropout_last_layer_prob"] = default_mc_dropout_l
 OOD_PARAM_SAMPLERS["mc_dropout_last_layer_prob"] = sample_mc_dropout_last_layer_prob_params
 OOD_PROBLEM_FACTORIES["mc_dropout_last_layer_prob"] = create_mc_dropout_last_layer_prob_problem
 
-
 OOD_DEFAULT_PARAM_FACTORIES["mc_dropout_last_layer_mi"] = default_mc_dropout_last_layer_mi_params
 OOD_PARAM_SAMPLERS["mc_dropout_last_layer_mi"] = sample_mc_dropout_last_layer_mi_params
 OOD_PROBLEM_FACTORIES["mc_dropout_last_layer_mi"] = create_mc_dropout_last_layer_mi_problem
@@ -685,7 +737,6 @@ OOD_DEFAULT_PARAM_FACTORIES["mc_batchnorm_prob"] = default_mc_batchnorm_prob_par
 OOD_PARAM_SAMPLERS["mc_batchnorm_prob"] = sample_mc_batchnorm_prob_params
 OOD_PROBLEM_FACTORIES["mc_batchnorm_prob"] = create_mc_batchnorm_prob_problem
 
-
 OOD_DEFAULT_PARAM_FACTORIES["mc_batchnorm_mi"] = default_mc_batchnorm_mi_params
 OOD_PARAM_SAMPLERS["mc_batchnorm_mi"] = sample_mc_batchnorm_mi_params
 OOD_PROBLEM_FACTORIES["mc_batchnorm_mi"] = create_mc_batchnorm_mi_problem
@@ -693,9 +744,6 @@ OOD_PROBLEM_FACTORIES["mc_batchnorm_mi"] = create_mc_batchnorm_mi_problem
 OOD_DEFAULT_PARAM_FACTORIES["mc_batchnorm_energy"] = default_mc_batchnorm_energy_params
 OOD_PARAM_SAMPLERS["mc_batchnorm_energy"] = sample_mc_batchnorm_energy_params
 OOD_PROBLEM_FACTORIES["mc_batchnorm_energy"] = create_mc_batchnorm_energy_problem
-
-
-
 
 # --- Register best-criterion detectors ---
 
@@ -707,6 +755,7 @@ OOD_DEFAULT_PARAM_FACTORIES["mc_batchnorm_best_criterion"] = default_mc_batchnor
 OOD_PARAM_SAMPLERS["mc_batchnorm_best_criterion"] = sample_mc_batchnorm_best_criterion_params
 OOD_PROBLEM_FACTORIES["mc_batchnorm_best_criterion"] = create_mc_batchnorm_best_criterion_problem
 
-OOD_DEFAULT_PARAM_FACTORIES["mc_dropout_last_layer_best_criterion"] = default_mc_dropout_last_layer_best_criterion_params
+OOD_DEFAULT_PARAM_FACTORIES[
+    "mc_dropout_last_layer_best_criterion"] = default_mc_dropout_last_layer_best_criterion_params
 OOD_PARAM_SAMPLERS["mc_dropout_last_layer_best_criterion"] = sample_mc_dropout_last_layer_best_criterion_params
 OOD_PROBLEM_FACTORIES["mc_dropout_last_layer_best_criterion"] = create_mc_dropout_last_layer_best_criterion_problem

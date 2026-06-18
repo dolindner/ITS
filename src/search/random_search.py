@@ -1,9 +1,9 @@
 from typing import Literal
+
 import torch
-import numpy as np
-from src.utils.transformation_problem import TransformationProblem
 
 from search.base_opt import BaseOptimizer
+from src.utils.transformation_problem import TransformationProblem
 
 
 class RSLR(BaseOptimizer):
@@ -37,8 +37,9 @@ class RSLR(BaseOptimizer):
             local_max_steps: int = 10,
             local_opt_class=torch.optim.Adam,
             local_opt_kwargs=None,
-            selection_method:Literal['topk','knn']='topk',
-            acceptance_criterion: Literal['always', 'step', 'final'] = 'step', # decides what criterion is used when comparing the result of local search with random search.
+            selection_method: Literal['topk', 'knn'] = 'topk',
+            acceptance_criterion: Literal['always', 'step', 'final'] = 'step',
+            # decides what criterion is used when comparing the result of local search with random search.
             project_param: bool = True,  # Whether to project parameters.
             include_zero_always: bool = False,  # To always include identity matrix as a candidate.
     ):
@@ -52,8 +53,7 @@ class RSLR(BaseOptimizer):
         self.project_param = project_param
         self.include_zero_always = include_zero_always
 
-
-    def optimize(self, transformation_problem: TransformationProblem, x,y=None, verbose=False):
+    def optimize(self, transformation_problem: TransformationProblem, x, y=None, verbose=False):
         with torch.no_grad():
             batch_size = x.shape[0]
             # 1) global sampling
@@ -76,7 +76,6 @@ class RSLR(BaseOptimizer):
                     batch_size, self.initial_samples
                 )
 
-
             dim = all_params.shape[-1]
             all_params = all_params.view(-1, dim)
             x_rep = x.repeat_interleave(self.initial_samples, dim=0)
@@ -85,14 +84,11 @@ class RSLR(BaseOptimizer):
             else:
                 y_rep = None
 
-
             all_err, all_other = transformation_problem.calculate_error(x_rep, all_params, y=y_rep)
             # reshape to (batch, samples, ...)
             all_err = all_err.view(batch_size, self.initial_samples)
             all_other = all_other.view(batch_size, self.initial_samples, -1)
             all_params = all_params.view(batch_size, self.initial_samples, dim)
-
-
 
             # 2) select candidates based on chosen method
             best_params, best_err, best_other = self._select_candidates(
@@ -129,11 +125,12 @@ class RSLR(BaseOptimizer):
 
                         if self.acceptance_criterion == 'step':
                             improved_mask = err < best_step_err
-                            best_step_params = torch.where(improved_mask.unsqueeze(-1), params_before_step, best_step_params)
+                            best_step_params = torch.where(improved_mask.unsqueeze(-1), params_before_step,
+                                                           best_step_params)
                             best_step_err = torch.where(improved_mask, err, best_step_err)
                             best_step_other = torch.where(improved_mask.unsqueeze(-1), other, best_step_other)
 
-            if self.local_max_steps>0:
+            if self.local_max_steps > 0:
                 # final evaluation
                 with torch.no_grad():
                     # After the loop, flat_params is at the final position. Evaluate it.
@@ -145,7 +142,7 @@ class RSLR(BaseOptimizer):
                         final_params_flat = torch.where(improved_mask.unsqueeze(-1), flat_params, best_step_params)
                         final_err = torch.where(improved_mask, final_err, best_step_err)
                         final_other = torch.where(improved_mask.unsqueeze(-1), final_other, best_step_other)
-                    else: # 'always' or 'final'
+                    else:  # 'always' or 'final'
                         final_params_flat = flat_params
                         # final_err and final_other are already set from the evaluation above
             else:
@@ -169,9 +166,6 @@ class RSLR(BaseOptimizer):
 
             # consolidate best per sample
             return transformation_problem.consolidate(x, final_params, final_err, final_other)
-
-
-
 
     def _select_candidates(self, all_params, all_err, all_other, batch_size, dim):
         """Select candidates based on the chosen selection method"""
@@ -234,7 +228,6 @@ class RSLR(BaseOptimizer):
         best_other = torch.gather(all_other, 1, chosen_idx.unsqueeze(-1).expand(-1, -1, all_other.shape[-1]))
 
         return best_params, best_err, best_other
-
 
     def _select_topk(self, all_params, all_err, all_other, batch_size, dim):
         """Original topK selection method"""

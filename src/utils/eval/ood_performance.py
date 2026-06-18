@@ -15,7 +15,6 @@ from src.utils.transformation_problem import TransformationProblem
 from src.utils.transforms.rotation import Rotation3DEulerUniform, RotationZ3D, RotationY3D, RotationX3D
 
 
-
 class ITSWRAPPER(torch.nn.Module):
     """
     Wrapper class for its that follows my optimize structure that is given an optimization problem.

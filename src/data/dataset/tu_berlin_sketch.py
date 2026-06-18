@@ -1,27 +1,25 @@
+import json
 import math
 import os
-import requests
+import re
 import zipfile
+from xml.dom import minidom
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from tqdm import tqdm
-from scipy.io import loadmat
-from xml.dom import minidom
-import re
 from safetensors.torch import save_file, load_file
-import json
+from scipy.io import loadmat
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 # --- Constants ---
-#alternative path: https://web.archive.org/web/20170314222333if_/http://cybertron.cg.tu-berlin.de/eitz/projects/classifysketch//sketches_matlab.zip
+# alternative path: https://web.archive.org/web/20170314222333if_/http://cybertron.cg.tu-berlin.de/eitz/projects/classifysketch//sketches_matlab.zip
 DATA_URL = "https://cybertron.cg.tu-berlin.de/eitz/projects/classifysketch/sketches_matlab.zip"
 DATA_DIR = "tu_berlin"
 ZIP_PATH = "sketches_matlab.zip"
 EXTRACTED_PATH = "tu_berlin"
 MAX_LEN = 200
-
-
 
 
 def download_and_extract(url, download_path, extract_path):
@@ -50,7 +48,6 @@ def download_and_extract(url, download_path, extract_path):
     with zipfile.ZipFile(download_path, 'r') as zip_ref:
         zip_ref.extractall(extract_path)
     print("Extraction complete.")
-
 
 
 def extract_label_string(label_data):
@@ -133,7 +130,6 @@ def extract_svg_string(raw_svg):
     return result
 
 
-
 def arc_to_beziers(p0, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, p1, num_segments=10):
     """
     Convert an SVG arc to a list of cubic Bezier segments.
@@ -171,10 +167,10 @@ def arc_to_beziers(p0, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, p1, 
 
     # Step 5: Compute angles
     def angle(u, v):
-        dot = u[0]*v[0] + u[1]*v[1]
+        dot = u[0] * v[0] + u[1] * v[1]
         l = math.hypot(u[0], u[1]) * math.hypot(v[0], v[1])
         ang = math.acos(max(-1, min(1, dot / l)))
-        if u[0]*v[1] - u[1]*v[0] < 0:
+        if u[0] * v[1] - u[1] * v[0] < 0:
             ang = -ang
         return ang
 
@@ -185,13 +181,13 @@ def arc_to_beziers(p0, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, p1, 
     delta_theta = angle(v1, v2)
 
     if not sweep_flag and delta_theta > 0:
-        delta_theta -= 2*math.pi
+        delta_theta -= 2 * math.pi
     elif sweep_flag and delta_theta < 0:
-        delta_theta += 2*math.pi
+        delta_theta += 2 * math.pi
 
     # Step 6: Approximate arc with Bezier curves
     beziers = []
-    segments = max(1, int(abs(delta_theta) / (math.pi/2)) + 1)  # split into ≤90° arcs
+    segments = max(1, int(abs(delta_theta) / (math.pi / 2)) + 1)  # split into ≤90° arcs
     delta = delta_theta / segments
     t = theta1
 
@@ -206,7 +202,7 @@ def arc_to_beziers(p0, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, p1, 
         p_end = [cx + rx * math.cos(phi) * cos_t1 - ry * math.sin(phi) * sin_t1,
                  cy + rx * math.sin(phi) * cos_t1 + ry * math.cos(phi) * sin_t1]
 
-        alpha = math.tan(delta / 4) * 4/3
+        alpha = math.tan(delta / 4) * 4 / 3
         p_ctrl1 = [p_start[0] - alpha * (rx * math.cos(phi) * sin_t + ry * math.sin(phi) * cos_t),
                    p_start[1] - alpha * (rx * math.sin(phi) * sin_t - ry * math.cos(phi) * cos_t)]
         p_ctrl2 = [p_end[0] + alpha * (rx * math.cos(phi) * sin_t1 + ry * math.sin(phi) * cos_t1),
@@ -216,7 +212,6 @@ def arc_to_beziers(p0, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, p1, 
         t = t1
 
     return beziers
-
 
 
 def interpolate_quadratic_bezier(p0, p1, p2, num_points=2):
@@ -229,10 +224,11 @@ def interpolate_quadratic_bezier(p0, p1, p2, num_points=2):
     for i in range(num_points):
         t = i / (num_points - 1)
         # Quadratic Bezier formula: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
-        x = (1-t)**2 * p0[0] + 2 * (1-t) * t * p1[0] + t**2 * p2[0]
-        y = (1-t)**2 * p0[1] + 2 * (1-t) * t * p1[1] + t**2 * p2[1]
+        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t ** 2 * p2[0]
+        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t ** 2 * p2[1]
         points.append([x, y])
     return points
+
 
 def interpolate_cubic_bezier(p0, p1, p2, p3, num_points=2):
     """
@@ -244,17 +240,16 @@ def interpolate_cubic_bezier(p0, p1, p2, p3, num_points=2):
     for i in range(num_points):
         t = i / (num_points - 1)
         # Cubic Bezier formula: B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
-        x = ((1-t)**3 * p0[0] +
-             3 * (1-t)**2 * t * p1[0] +
-             3 * (1-t) * t**2 * p2[0] +
-             t**3 * p3[0])
-        y = ((1-t)**3 * p0[1] +
-             3 * (1-t)**2 * t * p1[1] +
-             3 * (1-t) * t**2 * p2[1] +
-             t**3 * p3[1])
+        x = ((1 - t) ** 3 * p0[0] +
+             3 * (1 - t) ** 2 * t * p1[0] +
+             3 * (1 - t) * t ** 2 * p2[0] +
+             t ** 3 * p3[0])
+        y = ((1 - t) ** 3 * p0[1] +
+             3 * (1 - t) ** 2 * t * p1[1] +
+             3 * (1 - t) * t ** 2 * p2[1] +
+             t ** 3 * p3[1])
         points.append([x, y])
     return points
-
 
 
 def parse_svg_path_simple(path_data, interpolation_points=2):
@@ -520,7 +515,6 @@ def parse_svg_simple(svg_data, interpolation_points=2):
         # Handle cases where the SVG string is completely malformed XML
         return strokes
 
-
     # Extract path elements
     path_nodes = svg_doc.getElementsByTagName('path')
 
@@ -591,7 +585,6 @@ def strokes_to_sequence(drawing, max_len=200):
     return seq
 
 
-
 def load_tu_berlin_data(path, max_len=200, interpolation_points=2):
     """
     Load and process TU-Berlin dataset for LSTM training.
@@ -604,9 +597,9 @@ def load_tu_berlin_data(path, max_len=200, interpolation_points=2):
     Returns:
         tuple[np.ndarray, np.ndarray, list[str]]: Sequences, labels, and class names.
     """
-    mat_file = os.path.join(path,DATA_DIR, "sketches_matlab", "sketches.mat")
-    zip_path = os.path.join(path,DATA_DIR, "sketches_matlab.zip")
-    extracted_path = os.path.join(path,DATA_DIR)
+    mat_file = os.path.join(path, DATA_DIR, "sketches_matlab", "sketches.mat")
+    zip_path = os.path.join(path, DATA_DIR, "sketches_matlab.zip")
+    extracted_path = os.path.join(path, DATA_DIR)
     if not os.path.exists(mat_file):
         print(f"{mat_file} not found! Downloading and extracting dataset...")
         download_and_extract(DATA_URL, zip_path, extracted_path)
@@ -666,8 +659,6 @@ def load_tu_berlin_data(path, max_len=200, interpolation_points=2):
             failed_count += 1
             continue
 
-
-
         # Check if sketch will be truncated due to length
         if len(delta_drawing) > max_len:
             truncated_count += 1
@@ -697,6 +688,7 @@ def get_cache_path(data_dir, max_len, interpolation_points):
     cache_meta = os.path.join(cache_dir, f"{cache_base}_meta.json")
     return cache_data, cache_meta
 
+
 def save_cache(sequences, labels, class_names, max_len, interpolation_points, cache_data, cache_meta):
     tensors = {
         "sequences": torch.from_numpy(sequences),
@@ -711,6 +703,7 @@ def save_cache(sequences, labels, class_names, max_len, interpolation_points, ca
     with open(cache_meta, "w") as f:
         json.dump(meta, f)
 
+
 def load_cache(cache_data, cache_meta):
     tensors = load_file(cache_data)
     with open(cache_meta, "r") as f:
@@ -722,6 +715,7 @@ def load_cache(cache_data, cache_meta):
     interpolation_points = meta["interpolation_points"]
     return sequences, labels, class_names, max_len, interpolation_points
 
+
 def cached_load_tu_berlin_data(path, max_len=200, interpolation_points=2):
     path2 = os.path.join(path, DATA_DIR)
     cache_data, cache_meta = get_cache_path(path2, max_len, interpolation_points)
@@ -729,16 +723,19 @@ def cached_load_tu_berlin_data(path, max_len=200, interpolation_points=2):
         try:
             sequences, labels, class_names, cached_max_len, cached_interp = load_cache(cache_data, cache_meta)
             if cached_max_len == max_len and cached_interp == interpolation_points:
-                print(f"Loaded cached TU-Berlin dataset (max_len={max_len}, interpolation_points={interpolation_points})")
+                print(
+                    f"Loaded cached TU-Berlin dataset (max_len={max_len}, interpolation_points={interpolation_points})")
                 return sequences, labels, class_names
             else:
                 print("Cache exists but parameters differ, regenerating cache.")
         except Exception as e:
             print(f"Failed to load cache: {e}. Regenerating cache.")
-    sequences, labels, class_names = load_tu_berlin_data(path, max_len=max_len, interpolation_points=interpolation_points)
+    sequences, labels, class_names = load_tu_berlin_data(path, max_len=max_len,
+                                                         interpolation_points=interpolation_points)
     save_cache(sequences, labels, class_names, max_len, interpolation_points, cache_data, cache_meta)
     print(f"Saved TU-Berlin dataset to cache (max_len={max_len}, interpolation_points={interpolation_points})")
     return sequences, labels, class_names
+
 
 # ----------------------
 # Dataset
@@ -780,7 +777,9 @@ class NormalizeToRangeBatched(nn.Module):
         mask = stroke_seq[..., 3:4]
         return torch.cat([rel_xy, pen_state, mask], dim=-1)
 
+
 import matplotlib.pyplot as plt
+
 
 def visualize_sequence(seq: torch.Tensor, title=None, ax=None,
                        linewidth=2, color='black'):
@@ -794,8 +793,8 @@ def visualize_sequence(seq: torch.Tensor, title=None, ax=None,
     if ax is None:
         fig, ax = plt.subplots()
     seq = seq.cpu().numpy()
-    dx, dy, pen, mask = seq[:,0], seq[:,1], seq[:,2], seq[:,3]
-    
+    dx, dy, pen, mask = seq[:, 0], seq[:, 1], seq[:, 2], seq[:, 3]
+
     # Only use real data points (mask == 1)
     real_indices = mask == 1
     if not np.any(real_indices):
@@ -804,19 +803,20 @@ def visualize_sequence(seq: torch.Tensor, title=None, ax=None,
         if title:
             ax.set_title(title)
         return ax
-    
+
     dx = dx[real_indices]
-    dy = dy[real_indices] 
+    dy = dy[real_indices]
     pen = pen[real_indices]
-    
+
     x = dx.cumsum()
     y = dy.cumsum()
 
     strokes = []
     xs, ys = [], []
     for xi, yi, p in zip(x, y, pen):
-        xs.append(xi); ys.append(-yi)
-        if p == 1:             # pen lift: end current stroke
+        xs.append(xi);
+        ys.append(-yi)
+        if p == 1:  # pen lift: end current stroke
             strokes.append((xs, ys))
             xs, ys = [], []
     if xs:
@@ -829,6 +829,7 @@ def visualize_sequence(seq: torch.Tensor, title=None, ax=None,
     if title:
         ax.set_title(title)
     return ax
+
 
 # ----------------------
 # Main

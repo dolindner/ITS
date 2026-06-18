@@ -1,5 +1,5 @@
-from torchvision import models
 import torch.nn as nn
+from torchvision import models
 
 # Layer mapping for SI-SCORE architectures
 SI_LAYER_MAPPINGS = {
@@ -13,18 +13,20 @@ SI_LAYER_MAPPINGS = {
     "vit_b_16_pretrained": {
         0: ("heads.head", "input"),
         1: ("encoder.layers.encoder_layer_11", "output"),  # Last transformer block
-        2: ("encoder.layers.encoder_layer_8", "output"),   # 3/4 through transformer
-        3: ("encoder.layers.encoder_layer_5", "output"),   # 1/2 through transformer
-        4: ("encoder.layers.encoder_layer_2", "output"),   # 1/4 through transformer
-        5: ("encoder.dropout", "output"),    # After patch embedding
+        2: ("encoder.layers.encoder_layer_8", "output"),  # 3/4 through transformer
+        3: ("encoder.layers.encoder_layer_5", "output"),  # 1/2 through transformer
+        4: ("encoder.layers.encoder_layer_2", "output"),  # 1/4 through transformer
+        5: ("encoder.dropout", "output"),  # After patch embedding
     },
 }
+
 
 def get_si_network_architectures():
     """
     Returns a list of si-score architectures.
     """
     return ["vit_b_16_pretrained", "resnet50_pretrained"]
+
 
 def get_si_network(architecture, num_classes=1000, pretrained=True, freeze=True):
     """

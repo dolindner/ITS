@@ -15,13 +15,13 @@ def get_possible_architectures(dataset_info):
     if name in ["biggermnist", "bigger_mnist"]:
         from .bigger_mnist_networks import get_bigger_mnist_architectures
         return get_bigger_mnist_architectures()
-    #if name == "emnist":
+    # if name == "emnist":
     #    from .extended_mnist_networks import get_extended_mnist_architectures
-   #     return get_extended_mnist_architectures()
+    #     return get_extended_mnist_architectures()
     if name in ["biggerextendedmnist", "bigger_emnist", "biggeremnist"]:
         from .bigger_extended_mnist_networks import get_bigger_extended_mnist_architectures
         return get_bigger_extended_mnist_architectures()
-    #if name == "coil100":
+    # if name == "coil100":
     #    from .coil100_networks import get_coil100_architectures
     #    return get_coil100_architectures()
     if name in ["modelnet", "modelnet10"]:
@@ -43,13 +43,13 @@ def get_network(dataset_info, architecture, num_classes=None, num_rotations=8):
     if name in ["biggermnist", "bigger_mnist"]:
         from .bigger_mnist_networks import get_bigger_mnist_network
         return get_bigger_mnist_network(architecture, num_classes=num_classes, num_rotations=num_rotations)
-    #if name == "emnist":
+    # if name == "emnist":
     #    from .extended_mnist_networks import get_extended_mnist_network
     #    return get_extended_mnist_network(architecture, num_classes=num_classes, num_rotations=num_rotations)
     if name in ["biggerextendedmnist", "bigger_emnist", "biggeremnist"]:
         from .bigger_extended_mnist_networks import get_bigger_extended_mnist_network
         return get_bigger_extended_mnist_network(architecture, num_classes=num_classes, num_rotations=num_rotations)
-    #if name == "coil100":
+    # if name == "coil100":
     #    from .coil100_networks import get_coil100_network
     #    return get_coil100_network(architecture, num_classes=num_classes)
     if name in ["modelnet", "modelnet10"]:
@@ -61,10 +61,8 @@ def get_network(dataset_info, architecture, num_classes=None, num_rotations=8):
         if a == "pointnetplus_pca_then_norm_randomize_euclidean":
             return _build_pointnetplus_pca_then_norm_randomize_euclidean(num_classes=num_classes, sort=True)
         if a == "pointnetplus_half":
-            # TODO: if PointNetPlus supports a width/scale arg, call it here with reduced channels.
             return _build_pointnetplus(num_classes=num_classes, smaller='half')
         if a == "pointnetplus_quarter":
-            # TODO: reduce internal widths when PointNetPlus supports it
             return _build_pointnetplus(num_classes=num_classes, smaller='quarter')
         if a == "pointnetplus_pca":
             return _build_pointnetplus_pca(num_classes=num_classes)
@@ -177,17 +175,17 @@ def get_network_layer(dataset_info, architecture, index, num_classes=None, num_r
     if name in ["biggermnist", "bigger_mnist"]:
         from .bigger_mnist_networks import get_bigger_mnist_network_layer
         return get_bigger_mnist_network_layer(architecture, index, num_classes=num_classes, num_rotations=num_rotations)
-    #if name == "emnist":
-       # from .extended_mnist_networks import get_extended_mnist_network_layer
-       # return get_extended_mnist_network_layer(architecture, index, num_classes=num_classes,
-       #                                         num_rotations=num_rotations)
+    # if name == "emnist":
+    # from .extended_mnist_networks import get_extended_mnist_network_layer
+    # return get_extended_mnist_network_layer(architecture, index, num_classes=num_classes,
+    #                                         num_rotations=num_rotations)
     if name in ["biggerextendedmnist", "bigger_emnist", "biggeremnist"]:
         from .bigger_extended_mnist_networks import get_bigger_extended_mnist_network_layer
         return get_bigger_extended_mnist_network_layer(architecture, index, num_classes=num_classes,
                                                        num_rotations=num_rotations)
-    #if name == "coil100":
-       # from .coil100_networks import get_coil100_network_layer
-       #return get_coil100_network_layer(architecture, index, num_classes=num_classes)
+    # if name == "coil100":
+    # from .coil100_networks import get_coil100_network_layer
+    # return get_coil100_network_layer(architecture, index, num_classes=num_classes)
 
     raise ValueError(f"get_network_layer not implemented for dataset: {dataset_info.name}")
 
@@ -207,4 +205,3 @@ def get_max_layer_index(dataset_info, architecture, num_classes=None, num_rotati
             # These exceptions are typically raised for an invalid index.
             # The last valid index was `index - 1`.
             return index - 1
-

@@ -1,17 +1,17 @@
 """
 MNiST Dataset skipping the pil conversion as i do not need it.
 """
-import math
 
-import torch
 from typing import Tuple, Any, Callable, Optional
 
+import torch
 import torchvision
+
 from src.utils.transforms.apply import grid_resample
 
 
 class NoPILEMNIST(torchvision.datasets.EMNIST):
-    def __init__(self, root: str, train: bool = True,split: str = 'balanced',transform: Optional[Callable] = None,
+    def __init__(self, root: str, train: bool = True, split: str = 'balanced', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None) -> None:
         """
         NoPILEMNIST dataset that skips the PIL conversion and uses tensors directly.
@@ -27,14 +27,13 @@ class NoPILEMNIST(torchvision.datasets.EMNIST):
             None
         """
 
-
-        super(NoPILEMNIST, self).__init__(root, split=split, download=True,train=train,transform=transform,target_transform=target_transform)
+        super(NoPILEMNIST, self).__init__(root, split=split, download=True, train=train, transform=transform,
+                                          target_transform=target_transform)
         # Convert data to tensor
         self.data = self.data.float() / 255.0
-        #flip horizental then rotate data counterclockwise by 90 degrees
+        # flip horizental then rotate data counterclockwise by 90 degrees
         self.data = torch.flip(self.data, dims=[2])
         self.data = torch.rot90(self.data, k=1, dims=[1, 2])
-
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         img, target = self.data[index].unsqueeze(0), self.targets[index]
@@ -78,16 +77,16 @@ class NoPILEMNIST(torchvision.datasets.EMNIST):
         self.data = torch.cat(transformed_data, dim=0)
         return self
 
+
 class NoPILMNIST(torchvision.datasets.MNIST):
 
     def __init__(self, root: str, train: bool = True,
-                transform: Optional[Callable] = None,
-                target_transform: Optional[Callable] = None,
-                download: bool = False) -> None:
-            super(NoPILMNIST, self).__init__(root, train, transform, target_transform, download)
-            # Convert data to tensor
-            self.data = self.data.float() / 255.0
-
+                 transform: Optional[Callable] = None,
+                 target_transform: Optional[Callable] = None,
+                 download: bool = False) -> None:
+        super(NoPILMNIST, self).__init__(root, train, transform, target_transform, download)
+        # Convert data to tensor
+        self.data = self.data.float() / 255.0
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         img, target = self.data[index].unsqueeze(0), self.targets[index]
@@ -132,15 +131,12 @@ class NoPILMNIST(torchvision.datasets.MNIST):
         return self
 
 
-
-
-
 class NoPILFashionMNIST(torchvision.datasets.FashionMNIST):
     def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None, download: bool = False) -> None:
-            super(NoPILFashionMNIST, self).__init__(root, train, transform, target_transform, download)
-            # Convert data to tensor
-            self.data = self.data.float() / 255.0
+        super(NoPILFashionMNIST, self).__init__(root, train, transform, target_transform, download)
+        # Convert data to tensor
+        self.data = self.data.float() / 255.0
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         img, target = self.data[index].unsqueeze(0), self.targets[index]
@@ -185,9 +181,10 @@ class NoPILFashionMNIST(torchvision.datasets.FashionMNIST):
 
 
 class AffineTransformDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, transform_function=None, batch_size=None,resample_func=grid_resample,return_transformation=False
-                 ,clip_data=True,seed=None,clip_min=None,
-        clip_max=None,
+    def __init__(self, dataset, transform_function=None, batch_size=None, resample_func=grid_resample,
+                 return_transformation=False
+                 , clip_data=True, seed=None, clip_min=None,
+                 clip_max=None,
                  ):
         self.dataset = dataset
         self.transformation_matrices = []
@@ -217,23 +214,20 @@ class AffineTransformDataset(torch.utils.data.Dataset):
                 self.transformation_matrices.append(T.cpu())
 
         if self.seed is not None:
-            #restore random state
+            # restore random state
             torch.set_rng_state(random_new_state)
-
 
         self.transformation_matrices = torch.cat(self.transformation_matrices, dim=0)
         self.clip_data = clip_data
         self.clip_min = clip_min if clip_min is not None else 0.0
         self.clip_max = clip_max if clip_max is not None else 1.0
 
-
-
     def __getitem__(self, index: int, return_transformation=False) -> Tuple[Any, Any]:
         T = self.transformation_matrices[index]
         img, target = self.dataset[index]
         img = self.resample_func(img.unsqueeze(0), T).squeeze(0)
         if self.clip_data:
-            #check that it is image data with 3 image dimensions
+            # check that it is image data with 3 image dimensions
             if len(img.shape) == 3:
                 clip_min = self.clip_min
                 clip_max = self.clip_max
@@ -249,32 +243,31 @@ class AffineTransformDataset(torch.utils.data.Dataset):
             return img, target, T
         return img, target
 
-
     def __len__(self) -> int:
         return len(self.dataset)
 
+
 # Dynamic augmentation keeps a fresh transform for every __getitem__ call.
 class DynamicAugmentDataset(torch.utils.data.Dataset):
-        def __init__(self, base_dataset, sampler_fn, resample_fn, datatype,clip=True):
-            self.dataset = base_dataset
-            self.sampler_fn = sampler_fn
-            self.resample_fn = resample_fn
-            self.is_image = datatype == "image"
-            self.clip = clip
+    def __init__(self, base_dataset, sampler_fn, resample_fn, datatype, clip=True):
+        self.dataset = base_dataset
+        self.sampler_fn = sampler_fn
+        self.resample_fn = resample_fn
+        self.is_image = datatype == "image"
+        self.clip = clip
 
-        def __getitem__(self, index):
-            img, target = self.dataset[index]
-            T = self.sampler_fn()
-            img = self.resample_fn(img.unsqueeze(0), T).squeeze(0)
+    def __getitem__(self, index):
+        img, target = self.dataset[index]
+        T = self.sampler_fn()
+        img = self.resample_fn(img.unsqueeze(0), T).squeeze(0)
 
-            # Only clamp image data (3D tensors: C x H x W)
-            if self.is_image and self.clip and len(img.shape) == 3:
-                img = torch.clamp(img, 0.0, 1.0)
-            return img, target
+        # Only clamp image data (3D tensors: C x H x W)
+        if self.is_image and self.clip and len(img.shape) == 3:
+            img = torch.clamp(img, 0.0, 1.0)
+        return img, target
 
-        def __len__(self):
-            return len(self.dataset)
-
+    def __len__(self):
+        return len(self.dataset)
 
 
 class BatchTransformDataLoader:
@@ -283,6 +276,7 @@ class BatchTransformDataLoader:
     Expects each batch from the inner DataLoader to be a tuple (images, targets),
     and applies the provided transform to the entire images batch.
     """
+
     def __init__(self, dataloader, transform: Callable):
         self.dataloader = dataloader
         self.transform = transform
@@ -302,6 +296,7 @@ class BatchAffineTransformLoader:
     ((images, targets), transformation_matrices)
     and applies the resample function to transform the entire batch of images.
     """
+
     def __init__(self, dataloader, resample_func: Callable):
         self.dataloader = dataloader
         self.resample_func = resample_func
@@ -313,5 +308,3 @@ class BatchAffineTransformLoader:
 
     def __len__(self):
         return len(self.dataloader)
-
-

@@ -1,22 +1,20 @@
-#TODO risurfconv does not train. Likely not worth fixing it as pointnet plus pca does even if it only maps to 4 canoncial poses instead of complete invariance.
+# TODO risurfconv does not train. Likely not worth fixing it as pointnet plus pca does even if it only maps to 4 canoncial poses instead of complete invariance.
 # PointNet++ based components for ModelNet
 try:
     from model.pointnet_plus import PointNetPlus, SAModule, PointNetPlusHalfSized, PointNetPlusQuarterSized
-    from src.data.dataset.geometric_wrapper import BatchNormalizeScale,BatchNormalizeScaleEuclidean, TensorGeometricModelWrapper, NormalizeRotationVectorized
+    from src.data.dataset.geometric_wrapper import BatchNormalizeScale, BatchNormalizeScaleEuclidean, \
+        TensorGeometricModelWrapper, NormalizeRotationVectorized
     # Add module wrapper to allow usage in nn.Sequential
     from src.data.dataset.geometric_wrapper import NormalizeRotationVectorizedModule
+
     _POINTNET_AVAILABLE = True
 except Exception:
     _POINTNET_AVAILABLE = False
 
-import math
-
-import torch
 import torch.nn as nn
 
 
-
-def _build_pointnetplus(num_classes=10, normalize=True, deterministic_fps=False,smaller=None):
+def _build_pointnetplus(num_classes=10, normalize=True, deterministic_fps=False, smaller=None):
     """
     Builds Pointnet plus architecturs.
     """
@@ -24,9 +22,9 @@ def _build_pointnetplus(num_classes=10, normalize=True, deterministic_fps=False,
         raise ImportError("PointNetPlus or geometric wrappers not available")
     if smaller is None:
         core = PointNetPlus(num_classes=num_classes)
-    elif smaller=='half':
+    elif smaller == 'half':
         core = PointNetPlusHalfSized(num_classes=num_classes)
-    elif smaller=='quarter':
+    elif smaller == 'quarter':
         core = PointNetPlusQuarterSized(num_classes=num_classes)
     if normalize:
         core = nn.Sequential(BatchNormalizeScale(), core)
@@ -37,7 +35,8 @@ def _build_pointnetplus(num_classes=10, normalize=True, deterministic_fps=False,
                 m.random_start = False
     return model
 
-def _build_pointnetplus_euclidean(num_classes=10, normalize=True, deterministic_fps=False,smaller=None):
+
+def _build_pointnetplus_euclidean(num_classes=10, normalize=True, deterministic_fps=False, smaller=None):
     """
 
     """
@@ -45,9 +44,9 @@ def _build_pointnetplus_euclidean(num_classes=10, normalize=True, deterministic_
         raise ImportError("PointNetPlus or geometric wrappers not available")
     if smaller is None:
         core = PointNetPlus(num_classes=num_classes)
-    elif smaller=='half':
+    elif smaller == 'half':
         core = PointNetPlusHalfSized(num_classes=num_classes)
-    elif smaller=='quarter':
+    elif smaller == 'quarter':
         core = PointNetPlusQuarterSized(num_classes=num_classes)
     if normalize:
         core = nn.Sequential(BatchNormalizeScaleEuclidean(), core)
@@ -58,13 +57,14 @@ def _build_pointnetplus_euclidean(num_classes=10, normalize=True, deterministic_
                 m.random_start = False
     return model
 
+
 def _build_pointnetplus_pca(
-    num_classes=10,
-    normalize=True,
-    deterministic_fps=False,
-    ensure_proper_rotation=True,
-    sort=False,
-    max_points=-1,
+        num_classes=10,
+        normalize=True,
+        deterministic_fps=False,
+        ensure_proper_rotation=True,
+        sort=False,
+        max_points=-1,
 ):
     if not _POINTNET_AVAILABLE:
         raise ImportError("PointNetPlus or geometric wrappers not available")
@@ -88,13 +88,14 @@ def _build_pointnetplus_pca(
                 m.random_start = False
     return model
 
+
 # Change: Norm -> PCA (randomize=True)
 def _build_pointnetplus_pca_randomize(
-    num_classes=10,
-    normalize=True,
-    deterministic_fps=False,
-    ensure_proper_rotation=True,
-    sort=False,
+        num_classes=10,
+        normalize=True,
+        deterministic_fps=False,
+        ensure_proper_rotation=True,
+        sort=False,
 ):
     if not _POINTNET_AVAILABLE:
         raise ImportError("PointNetPlus or geometric wrappers not available")
@@ -117,12 +118,13 @@ def _build_pointnetplus_pca_randomize(
                 m.random_start = False
     return model
 
+
 def _build_pointnetplus_pca_then_norm_randomize(
-    num_classes=10,
-    normalize=True,
-    deterministic_fps=False,
-    ensure_proper_rotation=True,
-    sort=False,
+        num_classes=10,
+        normalize=True,
+        deterministic_fps=False,
+        ensure_proper_rotation=True,
+        sort=False,
 ):
     if not _POINTNET_AVAILABLE:
         raise ImportError("PointNetPlus or geometric wrappers not available")
@@ -145,12 +147,13 @@ def _build_pointnetplus_pca_then_norm_randomize(
                 print("Set deterministic FPS in SAModule before training")
     return model
 
+
 def _build_pointnetplus_pca_then_norm_randomize_euclidean(
-    num_classes=10,
-    normalize=True,
-    deterministic_fps=False,
-    ensure_proper_rotation=True,
-    sort=False,
+        num_classes=10,
+        normalize=True,
+        deterministic_fps=False,
+        ensure_proper_rotation=True,
+        sort=False,
 ):
     if not _POINTNET_AVAILABLE:
         raise ImportError("PointNetPlus or geometric wrappers not available")
@@ -172,6 +175,7 @@ def _build_pointnetplus_pca_then_norm_randomize_euclidean(
                 m.random_start = False
                 print("Set deterministic FPS in SAModule before training")
     return model
+
 
 def get_modelnet_architectures():
     return [

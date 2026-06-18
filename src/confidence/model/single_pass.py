@@ -1,5 +1,7 @@
 from typing import Optional, Union
+
 import torch
+
 from confidence.model.base_model import ModelBasedConfidence
 
 
@@ -9,7 +11,8 @@ class SinglePassConfidence(ModelBasedConfidence):
     The index parameter is used to select a specific output from the model's output. If index is None,
     the whole output is used for confidence computation.
     """
-    def __init__(self, model, confidence, index=None,input_dim=None):
+
+    def __init__(self, model, confidence, index=None, input_dim=None):
         """ Initializes the SinglePassConfidence class. This class computes
         confidence scores using a single forward pass of the model by calling
         the model and passing the output to a confidence module.
@@ -36,9 +39,7 @@ class SinglePassConfidence(ModelBasedConfidence):
             model_output: Output of the model. Shape: (*batch_dims, ...) if index is None, else same as output[self.index]
         """
 
-
         output = self.model(x)
-
 
         confidence_scores = self.confidence(output, y)
         if self.index is None:
