@@ -39,20 +39,15 @@ Once inside the repository folder (`cd ITS`), you install it by running
 ```
 pip install . 
 ```
-Note that this installs `torch` for `Python >= 3.8` and `CUDA == 11.8`. 
+Note that this installs `torch` for `Python >= 3.8` and `CUDA == 12.8`. 
 You can check your current `CUDA` version using `nvcc --version`.
-If the version differs, either change the `setup.py` manually 
-or reinstall `torch` for your setup (find more details 
-[here](https://pytorch.org/get-started/locally/)).
-
-Furthermore, the `setup.py` ensures that the entire project is executable, 
-hence it also contains a `jupyter` instance.
-If this is not required, feel free to remove it from the package list.
 
 A complete list of all requirements can be found [here](./requirements.txt).
 You can also install from ITS using
 ```
 python -m pip install -r requirements.txt
+
+Some datasetsh ave t
 ```
 
 ## Example Notebooks

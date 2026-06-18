@@ -5,14 +5,19 @@ import torch.nn.functional as F
 import torchvision
 from enum import Enum
 
+from src.utils.affine_transforms import AffineTransformation2D
 
-def identity(batch_size=1, device='cuda', truncate=False):
+
+#taken from its package
+
+
+def identity(batch_size=1, device='cuda', truncate=False, d=3):
     if type(batch_size) is tuple:
-        i = torch.eye(3).to(device)
+        i = torch.eye(d).to(device)
         for size in batch_size:
             i = i.unsqueeze(0).expand(size, *i.shape)
     else:
-        i = torch.eye(3)[None].expand(batch_size, 3, 3).to(device)
+        i = torch.eye(d)[None].expand(batch_size, d, d).to(device)
     if truncate:
         return i[:, :2, :2]
     return i
@@ -52,10 +57,10 @@ def shear(T, shearing):
 def rotate(T, angle):
     rotation_matrix = identity(batch_size=angle.shape[0], device=angle.device).clone()
     T = T if T is not None else rotation_matrix.clone()
-    rotation_matrix[:, 0, 0] = torch.cos(angle)
-    rotation_matrix[:, 0, 1] = -torch.sin(angle)
-    rotation_matrix[:, 1, 0] = torch.sin(angle)
-    rotation_matrix[:, 1, 1] = torch.cos(angle)
+    rotation_matrix[:, 0, 0] = torch.cos(angle).squeeze(-1)
+    rotation_matrix[:, 0, 1] = -torch.sin(angle).squeeze(-1)
+    rotation_matrix[:, 1, 0] = torch.sin(angle).squeeze(-1)
+    rotation_matrix[:, 1, 1] = torch.cos(angle).squeeze(-1)
     return T @ rotation_matrix
 
 
@@ -96,7 +101,7 @@ def resampling(x, transformation_mat, cropping=False):
     grid = F.affine_grid(affine_transform_mat, x.size(), align_corners=False).type(x.dtype).to(x.device)
     # reflection, zeros, border
     x = F.grid_sample(x, grid, mode='bilinear', align_corners=False, padding_mode='zeros')
-    # x = torchvision.transforms.functional.normalize(x, 0.1307, 0.3081)
+    # x = torchvision.transforms_old.functional.normalize(x, 0.1307, 0.3081)
     # x = torch.where(x == 0, x.min(), x)
     # requires zero padding
     if cropping:
@@ -339,7 +344,7 @@ class AffineTransformation(Enum):
 
 def multi_transform(x: torch.Tensor, trans_func: list, n: torch.Tensor,
                     domain=None, n_samples=16) -> (torch.Tensor, torch.Tensor):
-    """ This method transforms the given input signal (assumed image)
+    """ This method transforms_old the given input signal (assumed image)
     according to the specified list of transformations and the number of samples on each orbit.
     The resulting transformation matrix is a composition of these transformations
     with samples along their orbits. This can be used during training and/or testing.
@@ -365,7 +370,7 @@ def multi_transform(x: torch.Tensor, trans_func: list, n: torch.Tensor,
     return resampling(x, T_composed), T, T_composed
 
 
-def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1):
+def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1, resample_fn=None,orig_data_dim=4, matrix_dim=3):
     """ Returns the orbit samples given a signal x along its orbits.
     :param x: (batch x channel x width x height)
     :param trans_func: (batch x orbits) with the latter being `AffineTransformation` values
@@ -373,6 +378,7 @@ def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1):
     :param T: if None: the identity is used as a base matrix len(trans_func) x (batch x samples x 3 x 3)
               else T is used instead
     :param domain: (len(trans_func), ) parameters are generated within [-domain, +domain]
+    :param resample_fn: Optional function to perform resampling. If None, uses module-level `resampling`.
     :return: orbit samples (batch x orbits x samples x channel x width x height)
              transformation matrices (batch x samples x 3 x 3) for len(trans_func)
     """
@@ -380,19 +386,23 @@ def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1):
         trans_func = [trans_func, ]
     B, O = x.shape[0], len(trans_func)
     domain = [None for _ in range(len(trans_func))] if domain is None else domain
-    T = [identity((B, n_samples + 2 * extend), x.device, truncate=False)
+    T = [identity((B, n_samples + 2 * extend), x.device, truncate=False, d=matrix_dim)
          if T is None else T for _ in range(len(trans_func))]
     for t, func in enumerate(trans_func):
         for o, param_func in enumerate(func['orbit']):
-            if domain[t][o] != 0.:
-                T[t] = T[t].flatten(end_dim=1)
-                param = param_func(n_samples, domain=domain[t][o], extend=extend, shift=0)#, shift=int(n_samples/2))
-                param = param.tile((int(T[t].shape[0] / param.shape[0]), 1))
-                T[t] = func['matrix'](T[t], param.squeeze(-1).to(T[t].device))
-                T[t] = T[t].unflatten(0, (x.shape[0], n_samples + 2 * extend))
+            T[t] = T[t].flatten(end_dim=1)
+            param = param_func(n_samples, domain=domain[t], extend=extend, dim=o, shift=0)
+            param = param.tile((int(T[t].shape[0] / param.shape[0]), 1))
+            T[t] = func['matrix'](T[t], param.to(T[t].device))
+            T[t] = T[t].unflatten(0, (x.shape[0], n_samples + 2 * extend))
     # (orbits x batch x samples x channel x width x height) -> (orbits * batch * samples x channel x width x height)
     x = x[None, :, None].expand((len(trans_func), -1, n_samples + 2 * extend, -1, -1, -1)).flatten(end_dim=2)
-    Tx = resampling(x, torch.stack(T).flatten(end_dim=2))
+
+    # choose resampling function: override if provided, otherwise use module resampling()
+    resampler = resample_fn if resample_fn is not None else resampling
+    #flatten x to orig data dim
+    Tx = resampler(x.flatten(end_dim=x.dim()-orig_data_dim), torch.stack(T).flatten(end_dim=2))
+
     # (orbits * batch * samples x channel x width x height) -> (batch x orbits x samples x channel x width x height)
     return Tx.unflatten(0, (O, B, n_samples + 2 * extend)).swapaxes(0, 1), T
 
@@ -404,3 +414,15 @@ def get_n(n_transformations, _max=16, batch_size=128, device='cuda'):
         n = torch.zeros((batch_size, n_transformations), dtype=int)#.cuda()
     return n.to(device)
 
+
+
+if __name__ == '__main__':
+    #test orbit sampling for translation
+    x = torch.randn((2, 1, 28, 28)).cuda()
+
+    # translation = torch.tensor([0.5, 0.5]).cuda()
+    transformations = [AffineTransformation2D.TRANSLATION.value,]
+
+    domains = [[0.5,0.5],]
+    n_samples = 16
+    orbit_sampling(x, transformations[0], n_samples=n_samples, domain=domains)

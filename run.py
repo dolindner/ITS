@@ -47,8 +47,8 @@ torch.manual_seed(1234)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
-from src.transform import AffineTransformation, multi_transform
-from src.search import InverseTransformationSearch
+from its.transform import AffineTransformation, multi_transform
+from its.search import InverseTransformationSearch
 
 parsed_transformations = []
 for T in args.transformations:
@@ -81,7 +81,7 @@ transform = torchvision.transforms.Compose([
 
 if args.dataset == 'mnist':
     # essentially excluding either 6 or 9 as these would cause degenerations under 180 degree rotation
-    from src.data import load_mnist
+    from its.data import load_mnist
     n_classes = 9
     test_set = load_mnist(test_set=True, transform=transform)
 elif args.dataset == 'fmnist':
