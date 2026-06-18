@@ -1,22 +1,20 @@
-from sklearn.decomposition import PCA
 import math
-from typing import Union, Literal, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.covariance import MinCovDet
+from typing import Union, Literal, Optional, Tuple
+#TODO check the math beding this agian
+
+import torch
+import torch.nn as nn
 from torch_pca import PCA  #
-
-
-# TODO check the math beding this agian
-
 
 class InputTransform(nn.Module):
     """
     Input transform for data standardization and whitening.
     """
-
     def __init__(
             self,
             standardize: bool = False,
@@ -141,14 +139,13 @@ class InputTransformImage(nn.Module):
     Input transforms that downsamples the image and optionally applies random projection.
 
     """
-
-    def __init__(self, reduce_dims=(2, 2), reshape_image_shape=None, average_pool=True,
+    def __init__(self, reduce_dims=(2, 2),reshape_image_shape=None,average_pool=True,
                  rp_dim: Optional[int] = None, rp_method: str = "gaussian", rp_seed: Optional[int] = None,
                  rp_normalize_rows: bool = True):
         super().__init__()
         self.reduce_dims = reduce_dims
         self.avg_pool = nn.AdaptiveAvgPool2d(reduce_dims) if average_pool else nn.AdaptiveMaxPool2d(reduce_dims)
-        self.reshape_image_shape = reshape_image_shape  # potentially reshape to an image if input is already flat
+        self.reshape_image_shape = reshape_image_shape #potentially reshape to an image if input is already flat
 
         self.rp = None
         self.rp_dim = rp_dim
@@ -260,7 +257,6 @@ class PCAInputModule(nn.Module):
     """
     PCA-based dimensionality reduction using sklearn or PyTorch.
     """
-
     def __init__(self, n_components: int = 2, keep_first: bool = True, backend: str = "sklearn"):
         super().__init__()
         self.n_components = n_components
@@ -348,8 +344,7 @@ class PCAInputModule(nn.Module):
             x2d = x.view(1, -1)
             D_in = x2d.shape[1]
             if D_in != int(self.proj_matrix.shape[1]):
-                raise ValueError(
-                    f"PCAInputModule.forward: input features {D_in} != fitted {int(self.proj_matrix.shape[1])}")
+                raise ValueError(f"PCAInputModule.forward: input features {D_in} != fitted {int(self.proj_matrix.shape[1])}")
             out2d = x2d @ self.proj_matrix.T
             return out2d.view(-1)
         else:
@@ -357,8 +352,7 @@ class PCAInputModule(nn.Module):
             x2d = x.contiguous().view(B, -1)
             D_in = x2d.shape[1]
             if D_in != int(self.proj_matrix.shape[1]):
-                raise ValueError(
-                    f"PCAInputModule.forward: input features {D_in} != fitted {int(self.proj_matrix.shape[1])}")
+                raise ValueError(f"PCAInputModule.forward: input features {D_in} != fitted {int(self.proj_matrix.shape[1])}")
             out2d = x2d @ self.proj_matrix.T
             return out2d
 
@@ -394,11 +388,12 @@ class PCAInputModule(nn.Module):
         self._fitted = self.proj_matrix.numel() > 0
 
 
+
+
 class PCAInputModuleTorch(nn.Module):
     """
     PCA dimensionality reduction using torch_pca backend.
     """
-
     def __init__(self, n_components: int = 2, whiten=False):
         super().__init__()
         self.n_components = n_components
@@ -487,10 +482,11 @@ class PCAInputModuleTorch(nn.Module):
 
     def to(self, *args, **kwargs):
         """Move PCA model to device."""
-        super().to(*args, **kwargs)
+        super().to( *args, **kwargs)
         if self.pca is not None:
-            self.pca.to(*args, **kwargs)
+            self.pca.to( *args, **kwargs)
         return self
+
 
 
 class TokenPooling(nn.Module):
@@ -552,7 +548,6 @@ class TokenPooling(nn.Module):
 
 class L2Normalization(nn.Module):
     """L2 normalization layer."""
-
     def __init__(self, eps: float = 1e-8):
         super().__init__()
         self.eps = eps
@@ -575,13 +570,12 @@ class RandomProjectionModule(nn.Module):
     """
     Random linear projection using dense Gaussian or orthogonal matrices.
     """
-
     def __init__(
-            self,
-            n_components: int,
-            method: Literal["gaussian", "orthogonal"] = "gaussian",
-            seed: int = None,
-            normalize_rows: bool = True,
+        self,
+        n_components: int,
+        method: Literal["gaussian", "orthogonal"] = "gaussian",
+        seed: int = None,
+        normalize_rows: bool = True,
     ):
         super().__init__()
         self.n_components = n_components
@@ -664,8 +658,7 @@ class RandomProjectionModule(nn.Module):
             x2d = x.view(1, -1)
             D_in = x2d.shape[1]
             if D_in != int(self.proj.weight.shape[1]):
-                raise ValueError(
-                    f"RandomProjectionModule.forward: input features {D_in} != fitted {int(self.proj.weight.shape[1])}")
+                raise ValueError(f"RandomProjectionModule.forward: input features {D_in} != fitted {int(self.proj.weight.shape[1])}")
             out2d = self.proj(x2d)
             return out2d.view(-1)
         else:
@@ -673,8 +666,7 @@ class RandomProjectionModule(nn.Module):
             x2d = x.contiguous().view(B, -1)
             D_in = x2d.shape[1]
             if D_in != int(self.proj.weight.shape[1]):
-                raise ValueError(
-                    f"RandomProjectionModule.forward: input features {D_in} != fitted {int(self.proj.weight.shape[1])}")
+                raise ValueError(f"RandomProjectionModule.forward: input features {D_in} != fitted {int(self.proj.weight.shape[1])}")
             out2d = self.proj(x2d)
             return out2d
 
@@ -729,10 +721,10 @@ class SparseRandomProjectionModule(nn.Module):
     """
 
     def __init__(
-            self,
-            n_components: int,
-            density: Union[float, str] = 'auto',
-            seed: int = None
+        self,
+        n_components: int,
+        density: Union[float, str] = 'auto',
+        seed: int = None
     ):
         super().__init__()
         self.n_components = n_components
@@ -747,12 +739,12 @@ class SparseRandomProjectionModule(nn.Module):
         self._fitted = False
 
     def _make_sparse_random_matrix(
-            self,
-            n_components: int,
-            n_features: int,
-            density: float,
-            dtype: torch.dtype,
-            device: torch.device,
+        self,
+        n_components: int,
+        n_features: int,
+        density: float,
+        dtype: torch.dtype,
+        device: torch.device,
     ):
         """
         Generate sparse random projection matrix.
@@ -908,6 +900,7 @@ class SparseRandomProjectionModule(nn.Module):
         return result
 
 
+
 class InputTransformCollapse(nn.Module):
     """
     Collapse the spatial H,W dimensions to a single point per channel.
@@ -918,7 +911,6 @@ class InputTransformCollapse(nn.Module):
         - [B, F] or [F] -> returned unchanged
     - fit() is a no-op to match reducer API.
     """
-
     def __init__(self):
         super().__init__()
 
@@ -980,10 +972,9 @@ FEATURE_REDUCER_REGISTRY = {
     "sparse_rp": SparseRandomProjectionModule,
     "token_pool": TokenPooling,
     "image_transform": InputTransformImage,
-    "collapse_image": InputTransformCollapse,  # << added key for simple collapse reducer
+    "collapse_image": InputTransformCollapse,   # << added key for simple collapse reducer
     "pca_torch": PCAInputModuleTorch,
 }
-
 
 def create_feature_reducer(name: str, **kwargs) -> nn.Module:
     """
@@ -993,7 +984,7 @@ def create_feature_reducer(name: str, **kwargs) -> nn.Module:
     """
     if name is None:
         return None
-    # check if name is a torch nn module class
+    #check if name is a torch nn module class
     if isinstance(name, type) and issubclass(name, nn.Module):
         return name(**kwargs)
 
@@ -1002,3 +993,4 @@ def create_feature_reducer(name: str, **kwargs) -> nn.Module:
         raise ValueError(f"Unknown feature reducer '{name}'. Available: {list(FEATURE_REDUCER_REGISTRY)}")
     cls = FEATURE_REDUCER_REGISTRY[key]
     return cls(**kwargs)
+

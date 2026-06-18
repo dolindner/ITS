@@ -1,16 +1,16 @@
 import torch
-from pytorch_ood.detector import DICE
-from pytorch_ood.utils import is_known
-from torch import Tensor
 
+
+from torch import Tensor
+from pytorch_ood.utils import extract_features, is_known
+from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
+from confidence.input_transform import InputTransform
+from pytorch_ood.detector import DICE
 from confidence.base_confidence import ConfidenceModule
 from confidence.direct.logit_based import EnergyConfidence
-from confidence.input_transform import InputTransform
-from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
 from model.basic_networks import find_last_linear_layer
 
-
-# TODO Note DICE uses a newer version as was used during the paper. See if things changed. Maybe remove or rerun.
+#TODO Note DICE uses a newer version as was used during the paper. See if things changed. Maybe remove or rerun.
 class DICEConfidence(ClassicConfidenceBase):
     """
     Feature-based confidence for DICE with passable score-to-confidence mapping.

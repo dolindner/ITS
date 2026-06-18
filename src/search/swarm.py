@@ -1,7 +1,7 @@
 import torch
+from src.utils.transformation_problem import TransformationProblem
 
 from search.base_opt import BaseOptimizer
-from src.utils.transformation_problem import TransformationProblem
 
 
 class PSO(BaseOptimizer):
@@ -21,15 +21,15 @@ class PSO(BaseOptimizer):
     """
 
     def __init__(
-            self,
-            swarm_size: int = 64,
-            steps: int = 30,
-            w: float = 0.72,
-            c1: float = 1.49,
-            c2: float = 1.49,
-            clamp_velocity: bool = True,
-            v_max_scale: float = 0.2,
-            project_param: bool = True,
+        self,
+        swarm_size: int = 64,
+        steps: int = 30,
+        w: float = 0.72,
+        c1: float = 1.49,
+        c2: float = 1.49,
+        clamp_velocity: bool = True,
+        v_max_scale: float = 0.2,
+        project_param: bool = True,
     ):
         self.swarm_size = swarm_size
         self.steps = steps
@@ -115,5 +115,6 @@ class PSO(BaseOptimizer):
             final_params = gbest_pos.unsqueeze(1)  # (B,1,D)
             final_err = gbest_err.view(B, 1)
             final_other = gbest_other.view(B, 1, -1)
+
 
             return transformation_problem.consolidate(x, final_params, final_err, final_other)

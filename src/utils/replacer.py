@@ -1,8 +1,7 @@
-from src.utils.affine_transforms import AffineTransformations3D, AffineTransformation2D
+from src.utils.affine_transforms import AffineTransformations3D,AffineTransformation2D
 from src.utils.transform_sequence import TransformSequence
 from src.utils.transformation_problem import TransformationProblem
 from src.utils.transforms.scale import Reflection
-
 
 def replace_rotation_transforms(problem):
     """
@@ -31,23 +30,23 @@ def replace_rotation_transforms(problem):
     needs_update = False
     for t in transformations:
         # Check for 2D rotation (enum value or class)
-        if t == AffineTransformation2D.ROTATION.value:
+        if  t == AffineTransformation2D.ROTATION.value:
             needs_update = True
             break
         # Check for 3D rotation (enum value or class)
-        if t == AffineTransformations3D.ROTATION.value:
+        if  t == AffineTransformations3D.ROTATION.value:
             needs_update = True
             break
-        if t == AffineTransformations3D.ROTATIONEULER.value:
+        if  t == AffineTransformations3D.ROTATIONEULER.value:
             needs_update = True
             break
+
+
 
     if not needs_update:
         # assert that the transfroms are not instances of the classes
         for t in transformations:
-            if isinstance(t, type(AffineTransformation2D.ROTATION)) or isinstance(t,
-                                                                                  type(AffineTransformations3D.ROTATION)) or isinstance(
-                    t, type(AffineTransformations3D.ROTATION_EULER)):
+            if isinstance(t, type(AffineTransformation2D.ROTATION)) or isinstance(t, type(AffineTransformations3D.ROTATION)) or isinstance(t, type(AffineTransformations3D.ROTATION_EULER)):
                 assert False, "Transformations contain instances of rotation classes, but where not replaced."
         return original_sequence if is_sequence_input else problem
 
@@ -59,7 +58,7 @@ def replace_rotation_transforms(problem):
         replaced = False
 
         # Check for 2D rotation
-        if t == AffineTransformation2D.ROTATION.value:
+        if  t == AffineTransformation2D.ROTATION.value:
             new_transformations.append(AffineTransformation2D.ROTATION_COMPLEX.value)
             new_domains.append(None)
             replaced = True
@@ -96,9 +95,8 @@ def replace_rotation_transforms(problem):
 
     for t in new_transformations:
         if isinstance(t, type(AffineTransformation2D.ROTATION) or isinstance(t,
-                                                                             type(
-                                                                                 AffineTransformations3D.ROTATION)) or isinstance(
-            t, type(AffineTransformations3D.ROTATIONEULER))):
+                                                                             type(AffineTransformations3D.ROTATION)) or isinstance(
+                t, type(AffineTransformations3D.ROTATIONEULER))):
             assert False, "Transformations contain instances of rotation classes, but where not replaced."
 
     # Return same type as input
@@ -114,7 +112,6 @@ def replace_rotation_transforms(problem):
     )
 
     return new_problem
-
 
 def replace_rotation_transforms_2vec(problem):
     """
@@ -171,7 +168,7 @@ def replace_rotation_transforms_2vec(problem):
             replaced = True
 
         # Check for 3D rotation (standard)
-        if not replaced and t == AffineTransformations3D.ROTATION.value:
+        if not replaced and  t == AffineTransformations3D.ROTATION.value:
             new_transformations.append(AffineTransformations3D.ROTATION2VEC3D.value)
             new_domains.append(None)
             replaced = True
@@ -201,10 +198,10 @@ def replace_rotation_transforms_2vec(problem):
     )
     for t in new_transformations:
         if isinstance(t, type(AffineTransformation2D.ROTATION) or isinstance(t,
-                                                                             type(
-                                                                                 AffineTransformations3D.ROTATION)) or isinstance(
-            t, type(AffineTransformations3D.ROTATIONEULER))):
+                                                                             type(AffineTransformations3D.ROTATION)) or isinstance(
+                t, type(AffineTransformations3D.ROTATIONEULER))):
             assert False, "Transformations contain instances of rotation classes, but where not replaced."
+
 
     # Return same type as input
     if is_sequence_input:
@@ -220,9 +217,7 @@ def replace_rotation_transforms_2vec(problem):
 
     return new_problem
 
-
-from src.utils.transforms.scale import Scale, DirectedScale, ScaleAllSame
-
+from src.utils.transforms.scale import Scale,DirectedScale,ScaleAllSame
 
 def replace_scaling_transforms(obj, replace_scale=False):
     """
@@ -298,13 +293,13 @@ def replace_scaling_transforms(obj, replace_scale=False):
                 new_domains.append(d)
         elif t == AffineTransformation2D.REFLECTION_X.value:
             # reflections are a special case of scaling with log=False
-            zw = Reflection(dims=2, axis=0)
-            zw.eps = 1
+            zw = Reflection(dims=2,axis=0)
+            zw.eps=1
             new_transformations.append(zw)
             new_domains.append(d)
         elif t == AffineTransformation2D.REFLECTION_Y.value:
-            zw = Reflection(dims=2, axis=1)
-            zw.eps = 1
+            zw = Reflection(dims=2,axis=1)
+            zw.eps=1
             new_transformations.append(zw)
             new_domains.append(d)
         else:

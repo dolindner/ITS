@@ -1,17 +1,15 @@
 from typing import Dict, Any
-
 import optuna
 import torch
 
-from confidence.control.split import SplitConfidence
-from confidence.direct.logit_based import EnergyConfidence
-from confidence.model.single_pass import SinglePassConfidence
 from confidence.unsupervised.classic.mahalanobis import PrototypeMahalanobisConfidence
 from confidence.unsupervised.classic.mahalanobis_relative import RelativeMahalanobisConfidence
+from confidence.model.single_pass import SinglePassConfidence
+from confidence.direct.logit_based import EnergyConfidence
+from confidence.control.split import SplitConfidence
 from hyper_param.ood.base_prepare import OOD_DEFAULT_PARAM_FACTORIES, OOD_PARAM_SAMPLERS, OOD_PROBLEM_FACTORIES
-from model.get_model import get_max_layer_index, get_network_layer
 from src.utils.transformation_problem import TransformationProblem
-
+from model.get_model import get_max_layer_index, get_network_layer
 
 # --- Single Layer Mahalanobis ---
 
@@ -27,9 +25,7 @@ def default_single_mahalanobis_params() -> Dict[str, Any]:
         "use_correct_only": False,
     }
 
-
-def sample_single_mahalanobis_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None,
-                                     **kwargs) -> Dict[str, Any]:
+def sample_single_mahalanobis_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     max_layer = get_max_layer_index(dataset_info, architecture)
     layer_index = trial.suggest_int("layer_index", 0, max_layer)
     reducer_names = train_cache.reducer_name if train_cache else None
@@ -51,9 +47,7 @@ def sample_single_mahalanobis_params(trial: optuna.Trial, train_cache=None, data
         "use_correct_only": trial.suggest_categorical("use_correct_only", [True, False]),
     }
 
-
-def create_single_mahalanobis_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture,
-                                      **kwargs) -> TransformationProblem:
+def create_single_mahalanobis_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
     layer_index = params.get("layer_index", 0)
     reducer_name = params.get("reducer_name", None)
     layer, layer_io = get_network_layer(dataset_info, architecture, layer_index)
@@ -84,8 +78,7 @@ def create_single_mahalanobis_problem(params: Dict[str, Any], train_cache, trans
     detector.fit(embeddings_t.to(device), classes_t.to(device))
     detector.to(device)
 
-    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True,
-                                                 reducer_select=reducer_name)
+    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True, reducer_select=reducer_name)
     conf_split = SplitConfidence(detector, EnergyConfidence(), mult=False, b=params.get("split_b", 0.0))
     conf_mod = SinglePassConfidence(dual_output_model, conf_split, index=1)
 
@@ -106,9 +99,7 @@ def default_single_rmd_params() -> Dict[str, Any]:
         "use_correct_only": False,
     }
 
-
-def sample_single_rmd_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> \
-Dict[str, Any]:
+def sample_single_rmd_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     max_layer = get_max_layer_index(dataset_info, architecture)
     layer_index = trial.suggest_int("layer_index", 0, max_layer)
     reducer_names = train_cache.reducer_name if train_cache else None
@@ -130,9 +121,7 @@ Dict[str, Any]:
         "use_correct_only": trial.suggest_categorical("use_correct_only", [True, False]),
     }
 
-
-def create_single_rmd_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture,
-                              **kwargs) -> TransformationProblem:
+def create_single_rmd_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
     layer_index = params.get("layer_index", 0)
     reducer_name = params.get("reducer_name", None)
     layer, layer_io = get_network_layer(dataset_info, architecture, layer_index)
@@ -164,8 +153,7 @@ def create_single_rmd_problem(params: Dict[str, Any], train_cache, transform_seq
     detector.fit(embeddings_t.to(device), classes_t.to(device))
     detector.to(device)
 
-    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True,
-                                                 reducer_select=reducer_name)
+    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True, reducer_select=reducer_name)
     conf_split = SplitConfidence(detector, EnergyConfidence(), mult=False, b=params.get("split_b", 0.0))
     conf_mod = SinglePassConfidence(dual_output_model, conf_split, index=1)
 
@@ -177,6 +165,8 @@ OOD_DEFAULT_PARAM_FACTORIES["single_mahalanobis"] = default_single_mahalanobis_p
 OOD_PARAM_SAMPLERS["single_mahalanobis"] = sample_single_mahalanobis_params
 OOD_PROBLEM_FACTORIES["single_mahalanobis"] = create_single_mahalanobis_problem
 
+
 OOD_DEFAULT_PARAM_FACTORIES["single_rmd"] = default_single_rmd_params
 OOD_PARAM_SAMPLERS["single_rmd"] = sample_single_rmd_params
 OOD_PROBLEM_FACTORIES["single_rmd"] = create_single_rmd_problem
+

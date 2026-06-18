@@ -1,26 +1,26 @@
-from typing import Optional, Dict, Any
 
 import torch
 import torch.nn.functional as F
-
-from confidence.input_transform import InputTransform
+import pytorch_lightning as pl
+from torch.utils.data import DataLoader, TensorDataset
+from typing import Optional, Callable, Dict, Any
 from confidence.unsupervised.unsupervised_base import MLConfidenceBase
-
+from confidence.input_transform import InputTransform
+from sklearn.metrics import roc_auc_score
 
 class EnergyPredictionConfidence(MLConfidenceBase):
     def __init__(
-            self,
-            energy_model: torch.nn.Module,
-            loss_type: str = 'bce',
-            # options: 'mse', 'bce', 'margin', 'ranking', 'contrastive', 'triplet', 'discriminator'
-            margin: float = 1.0,
-            input_transform: Optional[InputTransform] = None,
-            negative_sampling_module: Optional[Any] = None,
-            trainer_kwargs: Optional[Dict[str, Any]] = None,
-            dataloader_kwargs: Optional[Dict[str, Any]] = None,
-            optimizer_type: Optional[torch.optim.Optimizer] = torch.optim.Adam,
-            optimizer_kwargs: Optional[Dict[str, Any]] = None,
-            gp_weight: float = 5.0,  # WGAN-GP lambda
+        self,
+        energy_model: torch.nn.Module,
+        loss_type: str = 'bce',  # options: 'mse', 'bce', 'margin', 'ranking', 'contrastive', 'triplet', 'discriminator'
+        margin: float = 1.0,
+        input_transform: Optional[InputTransform] = None,
+        negative_sampling_module: Optional[Any] = None,
+        trainer_kwargs: Optional[Dict[str, Any]] = None,
+        dataloader_kwargs: Optional[Dict[str, Any]] = None,
+        optimizer_type: Optional[torch.optim.Optimizer] = torch.optim.Adam,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        gp_weight: float = 5.0,  # WGAN-GP lambda
     ):
         super().__init__(
             input_transform=input_transform,
@@ -40,6 +40,7 @@ class EnergyPredictionConfidence(MLConfidenceBase):
         print(f"Model has non-negative constraint: {self._has_nonneg_constraint}")
         self._val_e_id_list = []
         self._val_e_ood_list = []
+
 
     def _training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """
@@ -97,11 +98,11 @@ class EnergyPredictionConfidence(MLConfidenceBase):
         elif self.loss_type == 'discriminator':
             # WGAN critic (minimization form)
             if e_id.numel() == 0 or e_ood.numel() == 0:
-                # self.log('train_loss', 0.0, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+                #self.log('train_loss', 0.0, on_step=True, on_epoch=True, prog_bar=True, logger=True)
                 return None
             loss = e_ood.mean() - e_id.mean()
 
-            # small reg loss to penalize large energies l2
+            #small reg loss to penalize large energies l2
             reg_loss = 0.01 * (e_id.pow(2).mean() + e_ood.pow(2).mean())
             center_reg = 0.001 * (e_id.mean().pow(2) + e_ood.mean().pow(2))
             loss = loss + reg_loss + center_reg
@@ -126,7 +127,7 @@ class EnergyPredictionConfidence(MLConfidenceBase):
                 )[0]
                 gp = ((grad.flatten(1).norm(2, dim=1) - 1.0) ** 2).mean()
                 loss = loss + self.gp_weight * gp
-                self.log('gp', gp, on_step=True, on_epoch=True, logger=True, prog_bar=True)
+                self.log('gp', gp, on_step=True, on_epoch=True, logger=True,prog_bar=True)
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
 
@@ -203,6 +204,7 @@ class EnergyPredictionConfidence(MLConfidenceBase):
             self._val_e_id_list.append(e_id.detach())
             self._val_e_ood_list.append(e_ood.detach())
 
+
         return {'loss': loss, 'e_id': e_id, 'e_ood': e_ood}
 
     def on_validation_epoch_end(self):
@@ -230,7 +232,7 @@ class EnergyPredictionConfidence(MLConfidenceBase):
         acc = (correct_id + correct_ood) / (all_e_id.numel() + all_e_ood.numel())
         self.log('val_acc', acc, prog_bar=True)
         # compute AUROC
-        try:
+        try :
             from sklearn.metrics import roc_auc_score
             y_true = torch.cat([torch.ones_like(all_e_id), torch.zeros_like(all_e_ood)]).cpu().numpy()
             y_scores = torch.cat([all_e_id, all_e_ood]).cpu().numpy()
@@ -239,9 +241,11 @@ class EnergyPredictionConfidence(MLConfidenceBase):
         except Exception as e:
             print(f"Could not compute AUROC: {e}")
 
+
         # clear memory for next epoch
         self._val_e_id_list.clear()
         self._val_e_ood_list.clear()
+
 
     def _forward(self, x: torch.Tensor, y=None) -> torch.Tensor:
         """
@@ -275,3 +279,4 @@ class EnergyPredictionConfidence(MLConfidenceBase):
 
         opt.step = step_with_nonneg
         return opt
+

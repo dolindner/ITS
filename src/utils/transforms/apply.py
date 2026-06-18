@@ -1,8 +1,7 @@
-from torchvision.transforms.functional import gaussian_blur
-# this file contains methods to apply a transformation to data.
+#this file contains methods to apply a transformation to data.
+import torch
 
-
-def grid_resample_reflection(x, T):
+def grid_resample_reflection(x,T):
     """
     Resample the input x using the transformation matrix T.
 
@@ -14,23 +13,21 @@ def grid_resample_reflection(x, T):
         Resampled tensor.
     """
     # Reshape x using torch grid resample. First last row is dropped per convention of torch.
-    # check if transformation matrix is batched
+    #check if transformation matrix is batched
     if len(T.shape) == 2:
-        # if not batched, add batch dimension
+        #if not batched, add batch dimension
         T = T.unsqueeze(0)
     affine_T = T[:, :2, :]
     unbatch = False
     if x.dim() == 3:
-        # if x is 3d, we need to add the batch dimension
+        #if x is 3d, we need to add the batch dimension
         x = x.unsqueeze(0)
         unbatch = True
     grid = torch.nn.functional.affine_grid(affine_T, x.size(), align_corners=False)
-    x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bilinear', padding_mode='reflection',
-                                                    align_corners=False)
+    x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bilinear', padding_mode='reflection', align_corners=False)
     return x_transformed[0] if unbatch else x_transformed
 
-
-def grid_resample_border(x, T):
+def grid_resample_border(x,T):
     """
     Resample the input x using the transformation matrix T.
 
@@ -42,23 +39,21 @@ def grid_resample_border(x, T):
         Resampled tensor.
     """
     # Reshape x using torch grid resample. First last row is dropped per convention of torch.
-    # check if transformation matrix is batched
+    #check if transformation matrix is batched
     if len(T.shape) == 2:
-        # if not batched, add batch dimension
+        #if not batched, add batch dimension
         T = T.unsqueeze(0)
     affine_T = T[:, :2, :]
     unbatch = False
     if x.dim() == 3:
-        # if x is 3d, we need to add the batch dimension
+        #if x is 3d, we need to add the batch dimension
         x = x.unsqueeze(0)
         unbatch = True
     grid = torch.nn.functional.affine_grid(affine_T, x.size(), align_corners=False)
-    x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bilinear', padding_mode='border',
-                                                    align_corners=False)
+    x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bilinear', padding_mode='border', align_corners=False)
     return x_transformed[0] if unbatch else x_transformed
 
-
-def grid_resample_bilinear(x, T):
+def grid_resample_bilinear(x,T):
     """
     Resample the input x using the transformation matrix T suing bilinear resampling.
 
@@ -70,20 +65,19 @@ def grid_resample_bilinear(x, T):
         Resampled tensor.
     """
     # Reshape x using torch grid resample. First last row is dropped per convention of torch.
-    # check if transformation matrix is batched
+    #check if transformation matrix is batched
     if len(T.shape) == 2:
-        # if not batched, add batch dimension
+        #if not batched, add batch dimension
         T = T.unsqueeze(0)
     affine_T = T[:, :2, :]
     unbatch = False
     if x.dim() == 3:
-        # if x is 3d, we need to add the batch dimension
+        #if x is 3d, we need to add the batch dimension
         x = x.unsqueeze(0)
         unbatch = True
     grid = torch.nn.functional.affine_grid(affine_T, x.size(), align_corners=False)
     x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bilinear', padding_mode='zeros', align_corners=False)
     return x_transformed[0] if unbatch else x_transformed
-
 
 def grid_resample(x, T):
     """
@@ -91,8 +85,7 @@ def grid_resample(x, T):
     """
     return grid_resample_bicubic(x, T)
 
-
-def grid_resample_bicubic(x, T):
+def grid_resample_bicubic(x,T):
     """
     Resample the input x using the transformation matrix T suing bicubic resampling.
 
@@ -104,22 +97,21 @@ def grid_resample_bicubic(x, T):
         Resampled tensor.
     """
     # Reshape x using torch grid resample. First last row is dropped per convention of torch.
-    # check if transformation matrix is batched
+    #check if transformation matrix is batched
     if len(T.shape) == 2:
-        # if not batched, add batch dimension
+        #if not batched, add batch dimension
         T = T.unsqueeze(0)
     affine_T = T[:, :2, :]
     unbatch = False
     if x.dim() == 3:
-        # if x is 3d, we need to add the batch dimension
+        #if x is 3d, we need to add the batch dimension
         x = x.unsqueeze(0)
         unbatch = True
     grid = torch.nn.functional.affine_grid(affine_T, x.size(), align_corners=False)
     x_transformed = torch.nn.functional.grid_sample(x, grid, mode='bicubic', padding_mode='zeros', align_corners=False)
     return x_transformed[0] if unbatch else x_transformed
 
-
-def grid_resample_nearest(x, T):
+def grid_resample_nearest(x,T):
     """
     Resample the input x using the transformation matrix T suing nearest resampling.
 
@@ -131,20 +123,19 @@ def grid_resample_nearest(x, T):
         Resampled tensor.
     """
     # Reshape x using torch grid resample. First last row is dropped per convention of torch.
-    # check if transformation matrix is batched
+    #check if transformation matrix is batched
     if len(T.shape) == 2:
-        # if not batched, add batch dimension
+        #if not batched, add batch dimension
         T = T.unsqueeze(0)
     affine_T = T[:, :2, :]
     unbatch = False
     if x.dim() == 3:
-        # if x is 3d, we need to add the batch dimension
+        #if x is 3d, we need to add the batch dimension
         x = x.unsqueeze(0)
         unbatch = True
     grid = torch.nn.functional.affine_grid(affine_T, x.size(), align_corners=False)
     x_transformed = torch.nn.functional.grid_sample(x, grid, mode='nearest', padding_mode='zeros', align_corners=False)
     return x_transformed[0] if unbatch else x_transformed
-
 
 def grid_resample_blur_simple(x, T, blur_sigma=0.0):
     if len(T.shape) == 2:
@@ -178,6 +169,7 @@ def grid_resample_deblur(x, T, amount=1.0, sigma=1.0, kernel_size=None, padding_
         kernel_size: Odd int; if None, computed from sigma.
         padding_mode: Padding strategy used for the operation.
     """
+    import torch
     import torch.nn.functional as F
     import kornia
 
@@ -212,9 +204,10 @@ def grid_resample_deblur(x, T, amount=1.0, sigma=1.0, kernel_size=None, padding_
     return deblurred[0] if unbatch else deblurred
 
 
-import kornia
+
 import torch
 import torch.nn.functional as F
+import kornia
 
 
 def grid_resample_blur(x, T, baseline_sigma=0.644, eps=1e-6):
@@ -255,14 +248,15 @@ def grid_resample_blur(x, T, baseline_sigma=0.644, eps=1e-6):
     frac_y = (y_coords - y_coords.round()).abs()
 
     sigma_effective = torch.sqrt(frac_x * (1 - frac_x) + frac_y * (1 - frac_y))
-    sigma_effective = sigma_effective.mean(dim=[1, 2])  # per sample
+    sigma_effective = sigma_effective.mean(dim=[1,2])  # per sample
 
     add_sigma = (baseline_sigma - sigma_effective).clamp(min=eps)
 
     sigmas = torch.stack([add_sigma, add_sigma], dim=1)  # (B,2)
-    blurred = kornia.filters.gaussian_blur2d(warped, kernel_size=(3, 3), sigma=sigmas)
+    blurred = kornia.filters.gaussian_blur2d(warped, kernel_size=(3,3), sigma=sigmas)
 
     return blurred[0] if unbatch else blurred
+
 
 
 def transform_3d_point_cloud(x, T):
@@ -285,7 +279,6 @@ def transform_3d_point_cloud(x, T):
 
     return x_transformed
 
-
 def transform_strokes_affine(x, T):
     """
     Apply an affine transform to stroke sequences given as relative deltas.
@@ -299,35 +292,39 @@ def transform_strokes_affine(x, T):
     :return: Tensor of shape (B, T, 3) with transformed deltas and same pen_state.
     """
     if T.dim() == 2:
-        T = T.unsqueeze(0)  # (1, 2, 3)
+        T = T.unsqueeze(0)                  # (1, 2, 3)
     B, T_len, _ = x.shape
 
     # split relative deltas and pen flag
-    deltas = x[..., :2]  # (B, T, 2)
-    pen = x[..., 2:]  # (B, T, 1)
+    deltas = x[..., :2]                     # (B, T, 2)
+    pen     = x[..., 2:]                    # (B, T, 1)
 
     # absolute positions
-    abs_pos = deltas.cumsum(dim=1)  # (B, T, 2)
+    abs_pos = deltas.cumsum(dim=1)          # (B, T, 2)
 
     # prepend starting origin
-    zeros = torch.zeros(B, 1, 2, device=x.device, dtype=x.dtype)
-    abs_aug = torch.cat([zeros, abs_pos], dim=1)  # (B, T+1, 2)
+    zeros    = torch.zeros(B, 1, 2, device=x.device, dtype=x.dtype)
+    abs_aug  = torch.cat([zeros, abs_pos], dim=1)   # (B, T+1, 2)
 
     # apply affine on homogeneous coords
-    ones = torch.ones(B, T_len + 1, 1, device=x.device, dtype=x.dtype)
-    pos_h = torch.cat([abs_aug, ones], dim=2)  # (B, T+1, 3)
-    T_t = T.transpose(-1, -2)  # (B, 3, 3)
-    abs_trans = pos_h.matmul(T_t)  # (B, T+1, 3)
-    abs_trans = abs_trans[..., :2]  # (B, T+1, 2)
+    ones     = torch.ones(B, T_len+1, 1, device=x.device, dtype=x.dtype)
+    pos_h    = torch.cat([abs_aug, ones], dim=2)    # (B, T+1, 3)
+    T_t      = T.transpose(-1, -2)                   # (B, 3, 3)
+    abs_trans= pos_h.matmul(T_t)                    # (B, T+1, 3)
+    abs_trans = abs_trans[..., :2]                # (B, T+1, 2)
     # compute new relative deltas
     new_deltas = abs_trans[:, 1:] - abs_trans[:, :-1]  # (B, T, 2)
 
     # recombine
-    return torch.cat([new_deltas, pen], dim=2)  # (B, T, 3)
+    return torch.cat([new_deltas, pen], dim=2)        # (B, T, 3)
 
 
-# functions to transform parameters
-def transformation_matrix_from_tf_params(param, transformations):
+
+
+
+
+#functions to transform parameters
+def transformation_matrix_from_tf_params(param,transformations):
     """
     Create a transformation matrix for the given parameters and transformations.
 
@@ -342,11 +339,13 @@ def transformation_matrix_from_tf_params(param, transformations):
     if isinstance(param, torch.Tensor):
         sizes = [transformation["param_size"] for transformation in transformations]
 
+
+
     transforms = [transformation["matrix"] for transformation in transformations]
     return transformation_matrix_from_param(param, sizes, transforms)
 
 
-def transformation_matrix_from_param(param, param_sizes, transformations):
+def transformation_matrix_from_param(param,param_sizes,transformations):
     """
     Create a transformation matrix for the given parameters.
 
@@ -367,7 +366,6 @@ def transformation_matrix_from_param(param, param_sizes, transformations):
         T = transformation(T, param[i])
     return T
 
-
 def transformation_matrix_from_single_param(param, transformation):
     """
     Create a transformation matrix for the given parameters.
@@ -387,11 +385,9 @@ class AdjustedGridResample:
     """
     Grid resample with custom background color.
     """
-
     def __init__(self, background_color):
         # store background as float tensor
         self.bg_tensor = torch.tensor(background_color, dtype=torch.float32)
-
     def __call__(self, image, transformation):
         # center, resample, then add background back
         channels = image.shape[-3]

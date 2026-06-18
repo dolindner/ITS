@@ -1,7 +1,11 @@
-# taken from torchgeometric examples #https://github.com/pyg-team/pytorch_geometric/tree/master/examples # libary is licensed under MIT License
+#taken from torchgeometric examples #TODO cite this
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
 
+import torch_geometric.transforms as T
+from torch_geometric.datasets import ModelNet
+from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MLP, PointNetConv, fps, global_max_pool, radius
 
 
@@ -14,7 +18,7 @@ class SAModule(torch.nn.Module):
         self.random_start = random_start
 
     def forward(self, x, pos, batch):
-        idx = fps(pos, batch, ratio=self.ratio, random_start=self.random_start)
+        idx = fps(pos, batch, ratio=self.ratio,random_start=self.random_start)
         row, col = radius(pos, pos[idx], self.r, batch, batch[idx],
                           max_num_neighbors=64)
         edge_index = torch.stack([col, row], dim=0)
@@ -64,7 +68,6 @@ class PointNetPlus(torch.nn.Module):
         x, pos, batch = sa3_out
 
         return self.mlp(x)
-
 
 class PointNetPlusHalfSized(torch.nn.Module):
     def __init__(self, num_classes=10):

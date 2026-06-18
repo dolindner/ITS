@@ -1,8 +1,9 @@
-# pytorch lightning classifier
+#pytorch lightning classifier
 import sys
 
 import pytorch_lightning as pl
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import TQDMProgressBar
 
@@ -11,10 +12,9 @@ class Classifier(pl.LightningModule):
     """
     Pl Lightning Wrapper for a classifier model. That can be used for training and validation.
     """
-
-    def __init__(self, model, optimizer_class=torch.optim.Adam, optimizer_params={"lr": 1e-3},
+    def __init__(self, model,  optimizer_class=torch.optim.Adam, optimizer_params={"lr":1e-3},
                  lr_scheduler=None, lr_scheduler_params=None, lr_config=None,
-                 custom_loss=None, custom_loss_on_data=False, pre_extractor=None, batch_transform=None,
+                 custom_loss=None,custom_loss_on_data=False,pre_extractor=None,batch_transform=None,
                  ):
         """
         Args:
@@ -37,12 +37,13 @@ class Classifier(pl.LightningModule):
         self.pre_extractor = pre_extractor
         self.batch_transform = batch_transform
 
+
     def forward(self, x):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        x, y = self.batch_transform(batch) if self.batch_transform is not None else (x, y)
+        x,y = self.batch_transform(batch) if self.batch_transform is not None else (x,y)
         with torch.no_grad():
             if self.pre_extractor is not None:
                 x = self.pre_extractor(x)
@@ -51,7 +52,7 @@ class Classifier(pl.LightningModule):
         else:
             logits = self.forward(x)
             loss = self.loss(logits, y)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss,prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -78,12 +79,13 @@ class Classifier(pl.LightningModule):
             if self.lr_config is not None:
                 self.lr_config["scheduler"] = scheduler
             else:
-                self.lr_config = {"scheduler": scheduler, "interval": "epoch", "monitor": "val_loss", "frequency": 1,
-                                  "strict": True, "name": None}
+                self.lr_config = {"scheduler": scheduler, "interval": "epoch", "monitor": "val_loss", "frequency": 1, "strict": True, "name": None}
 
             return {"optimizer": opt, "lr_scheduler": self.lr_config}
         else:
             return opt
+
+
 
 
 class MyProgressBar(TQDMProgressBar):

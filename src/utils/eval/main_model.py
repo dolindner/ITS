@@ -2,12 +2,11 @@ import torch
 from torchmetrics import Accuracy, FBetaScore
 from tqdm import tqdm
 
-
 def evaluate_base_model(
-        model,
-        data_loader,
-        device=None,
-        show_progress: bool = True,
+    model,
+    data_loader,
+    device=None,
+    show_progress: bool = True,
 ):
     """
     Evaluate a base model (no search/transform) on a dataloader and compute standard classification metrics.

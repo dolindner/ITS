@@ -1,5 +1,3 @@
-from src.utils.affine_transforms import AffineTransformation2D
-import time
 from copy import deepcopy
 
 import numpy as np
@@ -8,7 +6,7 @@ from torch.quasirandom import SobolEngine
 
 from src.utils.transforms.apply import grid_resample
 
-
+from src.utils.transforms.periodic_transform import PeriodicTransform
 def create_parameter_sampler(transform_sequence):
     """
     Create a parameter sampler for the given transform sequence.
@@ -17,10 +15,8 @@ def create_parameter_sampler(transform_sequence):
     Returns
          A function that takes a batch size and returns sampled parameters.
     """
-
     def sampler(batch_size):
         return transform_sequence.sample_individual(batch_size)
-
     return sampler
 
 
@@ -36,11 +32,9 @@ def create_sampler(transform_sequence):
     def sampler(batch_size):
         params = transform_sequence.sample_individual(batch_size)
         return transform_sequence(params)
-
     return sampler
 
-
-class TransformSequence(torch.nn.Module):
+class TransformSequence (torch.nn.Module):
     def __init__(self, transformations, domains, neighbour_hood_size=None,
                  application_method=grid_resample, device="cpu", dtype=torch.float32,
                  init_method="individual", use_individual_param_correction=False,
@@ -64,16 +58,21 @@ class TransformSequence(torch.nn.Module):
         super().__init__()
         self.transformations = transformations
         self.domains = domains
-        self.dummy_param = torch.nn.Parameter(torch.zeros(1, device=device, dtype=dtype), requires_grad=False, )
+        self.dummy_param = torch.nn.Parameter(torch.zeros(1,device=device,dtype=dtype), requires_grad=False,)
 
         self.application_method = application_method
 
+
         self.sizes = self.extract_sampling_param_sizes()
+
 
         self.reflect = reflect
         self.invert = invert  # whether to invert the transformation
 
+
+
         self.init_method = init_method
+
 
         if neighbour_hood_size is None:
             # Build per-transform default neighbourhoods and concatenate
@@ -83,13 +82,15 @@ class TransformSequence(torch.nn.Module):
                 nh_list.append(transform.default_neighbourhood_size(domain=dom,
                                                                     dtype=self.dummy_param.dtype,
                                                                     device=self.dummy_param.device))
-            nh = torch.cat(nh_list, dim=-1) if len(nh_list) > 0 else torch.ones(self.calc_complete_size(), dtype=dtype,
-                                                                                device=device)
+            nh = torch.cat(nh_list, dim=-1) if len(nh_list) > 0 else torch.ones(self.calc_complete_size(), dtype=dtype, device=device)
         else:
             nh = TransformSequence.calc_neighbor_hood_size(neighbour_hood_size, self.sizes, device, dtype)
         self.register_buffer("neighbour_hood_size", nh)
 
+
         self.to(device)
+
+
 
     def extract_sampling_param_sizes(self):
         """
@@ -97,6 +98,7 @@ class TransformSequence(torch.nn.Module):
         Returns: List of parameter sizes for each transformation.
         """
         return [transformation.sample_space_param_size() for transformation in self.transformations]
+
 
     @staticmethod
     def calc_neighbor_hood_size(neighborhood_size, param_sizes, device="cpu", dtype=torch.float32):
@@ -123,8 +125,10 @@ class TransformSequence(torch.nn.Module):
         # interpret as iterable of individual neighborhood sizes per transformation that has to extended to match inidival number param
         nh_list = []
 
+
         if not isinstance(neighborhood_size, (list, tuple)):
             neighborhood_size = [neighborhood_size] * len(param_sizes)
+
 
         for i, size in enumerate(param_sizes):
             nh_val = neighborhood_size[i]
@@ -136,6 +140,7 @@ class TransformSequence(torch.nn.Module):
 
         # Concatenate all tensors to create a single tensor with one value per parameter
         return torch.cat(nh_list, dim=-1)
+
 
     def extract_param_sizes(self):
         """
@@ -269,7 +274,7 @@ class TransformSequence(torch.nn.Module):
         param = self.normalize(param)
         return param
 
-    def sample_individual(self, batch_size, n_samples=None, reflect=False):
+    def sample_individual(self,batch_size,n_samples=None, reflect=False):
         """
         Sample a random point in the parameter space using each transformation's sampling method.
 
@@ -285,12 +290,10 @@ class TransformSequence(torch.nn.Module):
         total_param_size = batch_size * n_samples if n_samples is not None else batch_size
         for i, transformation in enumerate(self.transformations):
             # get the transformation's sampling method
-            p = transformation.sample_param(total_param_size, self.domains[i], device=self.dummy_param.device,
-                                            dtype=self.dummy_param.dtype)
-            p2 = transformation.project_parameters(p, self.domains[i], reflect=reflect)
-            # test to se that difference is not bigger than 1e-4
-            assert torch.allclose(p, p2, atol=1e-4,
-                                  rtol=1e-4), f"Sampled parameter not correctly projected for transformation {i}."
+            p = transformation.sample_param(total_param_size,self.domains[i],device=self.dummy_param.device,dtype=self.dummy_param.dtype)
+            p2 = transformation.project_parameters(p, self.domains[i],reflect=reflect)
+            #test to se that difference is not bigger than 1e-4
+            assert torch.allclose(p, p2, atol=1e-4,rtol=1e-4), f"Sampled parameter not correctly projected for transformation {i}."
             param.append(p2)
 
         param = torch.cat(param, dim=-1)
@@ -315,7 +318,7 @@ class TransformSequence(torch.nn.Module):
             raise ValueError(f"Provided sample dimension {last_dim} != expected {sum(sample_sizes)}")
         flat = sparam.view(-1, last_dim)
         split = torch.split(flat, sample_sizes, dim=-1)
-        converted = [transform.sobol_to_param(block, domain)
+        converted = [transform.sobol_to_param(block,domain)
                      for block, transform, domain in zip(split, self.transformations, self.domains)]
         # Concatenate back
 
@@ -323,6 +326,7 @@ class TransformSequence(torch.nn.Module):
         # Reshape back
         out = out.view(*original_shape[:-1], out.shape[-1])
         return out
+
 
     def get_sampling_dim(self):
         return sum(self.extract_sampling_param_sizes())
@@ -394,6 +398,7 @@ class TransformSequence(torch.nn.Module):
         offsets = torch.rand(batch_size, dim, 1, device=device, dtype=dtype) / n_samples
         base_seq = (offsets + torch.arange(n_samples, device=device, dtype=dtype).view(1, 1, -1) / n_samples) % 1
 
+
         # Generate random values and use argsort for permutations (MUCH faster!)
         perm = torch.rand(batch_size, dim, n_samples, device=device, dtype=dtype).argsort(dim=2)
         samples = torch.gather(base_seq, 2, perm)
@@ -416,16 +421,14 @@ class TransformSequence(torch.nn.Module):
             s = self.sample_initial_parameters_sobol(batch_size, sample_dim, n_samples, device=device, dtype=dtype)
             return self.sobol_to_param(s)
         elif self.init_method == "latin_hypercube":
-            s = self.sample_initial_parameters_latin_hypercube(batch_size, sample_dim, n_samples, device=device,
-                                                               dtype=dtype)
+            s = self.sample_initial_parameters_latin_hypercube(batch_size, sample_dim, n_samples, device=device, dtype=dtype)
             return self.sobol_to_param(s)
         elif self.init_method == "uniform":
             s = self.sample_initial_parameters(batch_size, sample_dim, n_samples, device=device, dtype=dtype)
             return self.sobol_to_param(s)
         elif self.init_method == "permuted_lattice":
-            s = self.sample_initial_parameters_permuted_lattice(batch_size, sample_dim, n_samples, device=device,
-                                                                dtype=dtype)
-            # make contiguous
+            s = self.sample_initial_parameters_permuted_lattice(batch_size, sample_dim, n_samples, device=device, dtype=dtype)
+            #make contiguous
             s = s.contiguous()
             return self.sobol_to_param(s)
         elif self.init_method == "individual":
@@ -442,7 +445,8 @@ class TransformSequence(torch.nn.Module):
             new_obj.to(device)
         return new_obj
 
-    def get_identity_parameters(self, batch_size=1, ):
+
+    def get_identity_parameters(self, batch_size=1,):
         """
         Get the parameters that correspond to the identity transformation.
         :param batch_size: Number of batches to create.
@@ -456,6 +460,8 @@ class TransformSequence(torch.nn.Module):
         param = torch.cat(param, dim=-1)
         return param
 
+
+
     def get_inverted_sequence(self):
         """Create a transformation sequence returning the inverted transformation matrix.
 
@@ -468,10 +474,11 @@ class TransformSequence(torch.nn.Module):
         Returns:
             TransformSequence: Inverted TransformSequence object.
         """
-        # create a deepcopy
+        #create a deepcopy
         inverted = deepcopy(self)
         inverted.invert = not inverted.invert  # toggle invert flag
         return inverted
+
 
     def get_discreteness_vector(self):
         """
@@ -490,10 +497,9 @@ class TransformSequence(torch.nn.Module):
             discreteness.extend([n] * size)
         return torch.tensor(discreteness, dtype=torch.long, device=self.dummy_param.device)
 
-
 if __name__ == "__main__":
     import torch
-    from src.utils.affine_transforms import AffineTransformation2D
+    from src.utils.affine_transforms import AffineTransformation2D, AffineTransformations3D
 
     # Set up device and dtype for testing
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -510,6 +516,7 @@ if __name__ == "__main__":
         (-torch.pi, torch.pi),  # Rotation domain
         ((-1.0, 1.0), (-2.0, 2.0))  # Translation domain
     ]
+
 
     seq_2d = TransformSequence(transforms_2d, domains_2d, device=device, dtype=dtype)
     par_angle = seq_2d.initial_param(batch_size=1000)
@@ -543,6 +550,7 @@ if __name__ == "__main__":
     transformed = seq_2d2.transform(dummy_image, params[0:1])
     print(f"Transformed image shape: {transformed.shape}")
 
+
     # Check boundary violations
     violations = seq_2d2.boundary_violation(params[:10])
     print(f"Boundary violations shape: {violations.shape}, mean: {violations.mean()}")
@@ -563,14 +571,12 @@ if __name__ == "__main__":
     print(f"Sampling parameter sizes: {sampling_sizes}")
     print(f"Complete parameter size: {total_size}")
 
-    # benchmark sample sobol
-    # set sobol
+    #benchmark sample sobol
+    #set sobol
     seq_2d2.init_method = "sobol"
     import time
-
     start_time = time.time()
     for _ in range(4000):
         _ = seq_2d2.initial_param(batch_size=1000, n_samples=1)
     end_time = time.time()
-    print(
-        f"Benchmark: 1000 iterations of initial_param with batch_size=1000, n_samples=1 took {end_time - start_time:.4f} seconds.")
+    print(f"Benchmark: 1000 iterations of initial_param with batch_size=1000, n_samples=1 took {end_time - start_time:.4f} seconds.")

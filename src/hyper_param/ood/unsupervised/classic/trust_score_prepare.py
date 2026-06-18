@@ -1,15 +1,14 @@
 from typing import Dict, Any
-
 import optuna
 import torch
 
-from confidence.control.split import PredictedSplitConfidence
-from confidence.direct.logit_based import EnergyConfidence
-from confidence.model.single_pass import SinglePassConfidence
 from confidence.unsupervised.classic.trust_score import TrustScoreTorchConfidence
+from confidence.model.single_pass import SinglePassConfidence
+from confidence.direct.logit_based import EnergyConfidence
+from confidence.control.split import PredictedSplitConfidence
 from hyper_param.ood.base_prepare import OOD_DEFAULT_PARAM_FACTORIES, OOD_PARAM_SAMPLERS, OOD_PROBLEM_FACTORIES
-from model.get_model import get_max_layer_index, get_network_layer
 from src.utils.transformation_problem import TransformationProblem
+from model.get_model import get_max_layer_index, get_network_layer
 
 
 # --- Trust Score ---
@@ -19,7 +18,7 @@ def default_trust_score_params(train_cache=None, dataset_info=None, architecture
         "k_neighbors": 5,
         "k_distance": None,
         "eps": 1e-10,
-        "dtype": "float32",  # not used currently, not implemented properly for trust score.
+        "dtype": "float32", #not used currently, not implemented properly for trust score.
         "layer_index": 0,
         "reducer_name": None,
         "alpha": 0.0,
@@ -36,9 +35,7 @@ def default_trust_score_params(train_cache=None, dataset_info=None, architecture
             params["reducer_name"] = None
     return params
 
-
-def sample_trust_score_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> \
-Dict[str, Any]:
+def sample_trust_score_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     max_layer = get_max_layer_index(dataset_info, architecture)
     layer_index = trial.suggest_int("layer_index", 0, max_layer)
     reducer_names = train_cache.reducer_name if train_cache else None
@@ -62,9 +59,7 @@ Dict[str, Any]:
         "distance": trial.suggest_categorical("distance", ["euclidean", "cosine"]),
     }
 
-
-def create_trust_score_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture,
-                               **kwargs) -> TransformationProblem:
+def create_trust_score_problem(params: Dict[str, Any], train_cache, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
     # 1. get embeddings
     layer_index = params.get("layer_index", 0)
     reducer_name = params.get("reducer_name", None)
@@ -95,12 +90,10 @@ def create_trust_score_problem(params: Dict[str, Any], train_cache, transform_se
     detector.to(device)
     detector.fit(embeddings_t.to(device), classes_t.to(device))
     detector.to(device)
-    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True,
-                                                 reducer_select=reducer_name)
+    dual_output_model = train_cache.make_wrapper(layer, capture_modes=layer_io, concat=False, flatten=True, reducer_select=reducer_name)
     conf_split = PredictedSplitConfidence(detector, EnergyConfidence(), mult=False, b=params.get("split_b", 0.0))
     conf_mod = SinglePassConfidence(dual_output_model, conf_split, index=1)
     return TransformationProblem(conf_mod, transform_seq, consolidate_method="consolidate_simple")
-
 
 # --- Registration ---
 OOD_DEFAULT_PARAM_FACTORIES["trust_score"] = default_trust_score_params

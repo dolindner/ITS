@@ -1,12 +1,10 @@
-from typing import Optional, TypeVar, Callable
+from typing import Optional, TypeVar
 import torch
-from pytorch_ood.detector import SHE
 from torch import nn, Tensor
 
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
 
 Self = TypeVar("Self")
-
 
 class SHETorchConfidence(ClassicConfidenceBase):
     """
@@ -14,13 +12,13 @@ class SHETorchConfidence(ClassicConfidenceBase):
     Fit per‐class mean patterns, then score via -⟨z, pattern_y⟩.
     """
 
-    def __init__(self, input_transform: Optional[nn.Module] = None, map_function: Optional[Callable] = None):
+    def __init__(self, input_transform: Optional[nn.Module] = None,map_function: Optional[callable] = None):
 
         super().__init__(input_transform=input_transform)
         self.patterns_: Optional[Tensor] = None
         self.fitted = False
         self.map_function = map_function if map_function is not None else lambda x: -x
-        # print("For correct functionality one must prefilter embeddings to only keep correctly classified ones.")
+        #print("For correct functionality one must prefilter embeddings to only keep correctly classified ones.")
         self.cosine_debug = False  # debug flag for cosine similarity
 
     def _fit(self, z: Tensor, y: Tensor) -> Self:
@@ -69,13 +67,20 @@ class SHETorchConfidence(ClassicConfidenceBase):
         else:
             z_norm = z / z.norm(dim=1, keepdim=True)
             patterns_y_norm = patterns_y / patterns_y.norm(dim=1, keepdim=True)
-            cosine_distance = 1 - (z_norm * patterns_y_norm).sum(dim=1)
+            cosine_distance = 1-(z_norm * patterns_y_norm).sum(dim=1)
             true_scores = -cosine_distance  # (batch_size,)
 
         return self.map_function(-true_scores)
 
 
+
 if __name__ == "__main__":
+    import torch
+    from torch import nn, Tensor
+    from torch.utils.data import DataLoader, TensorDataset
+
+    from pytorch_ood.detector import SHE
+
     # --- Dummy data ---
     num_classes = 3
     feature_dim = 5
@@ -85,26 +90,22 @@ if __name__ == "__main__":
     X = torch.randn(num_samples, feature_dim)
     y = torch.randint(0, num_classes, (num_samples,))
 
-
     # --- Dummy backbone and head ---
     class DummyBackbone(nn.Module):
         def forward(self, x):
             return x
 
-
     class DummyHead(nn.Module):
         def __init__(self):
             super().__init__()
             self.linear = nn.Linear(feature_dim, num_classes)
-
         def forward(self, z):
             return self.linear(z)
-
 
     backbone = DummyBackbone()
     head = DummyHead()
 
-    # Fit SHETorchConfidence
+    #Fit SHETorchConfidence
     # Use a dummy classifier to generate predicted labels
     logits = head(X)
     y_hat = logits.argmax(dim=1)
@@ -113,14 +114,14 @@ if __name__ == "__main__":
     she_torch._fit(X, y_hat)  # fit patterns using predicted labels
     scores_torch = she_torch._forward(X, y_hat)  # forward with predicted labels
 
-    # Fit original SHE
+    #Fit original SHE
     she_orig = SHE(backbone=backbone, head=head)
     # For demonstration, we compute patterns using predicted classes
     y_hat_orig = head(X).argmax(dim=1)
     she_orig.patterns = torch.stack([X[y_hat_orig == c].mean(dim=0) for c in range(num_classes)])
     scores_orig = she_orig.predict_features(X)
 
-    # Compare
+    #Compare
     print("SHETorchConfidence scores (predicted classes):", scores_torch)
     print("SHE original scores:", scores_orig)
 

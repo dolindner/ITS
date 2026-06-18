@@ -1,22 +1,21 @@
 from typing import Dict, Any, List, Optional
-
 import optuna
 import torch
 
-from confidence.control.regression import RegressionConfidence, make_aggregator
-from confidence.control.regression_wrapper import RegressionWrapper
-from confidence.unsupervised.classic.prototype import ClassPrototypeConfidence
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
     OOD_PROBLEM_FACTORIES,
     OOD_MODEL_PARAM_EXTRACTORS,
 )
-from model.get_model import get_max_layer_index, get_network_layer
 from src.utils.transformation_problem import TransformationProblem
+from model.get_model import get_max_layer_index, get_network_layer
+from confidence.control.regression import RegressionConfidence, make_aggregator
+from confidence.control.regression_wrapper import RegressionWrapper
+from confidence.unsupervised.classic.prototype import ClassPrototypeConfidence
 
+#variant of prototype that supports multiple layers
 
-# variant of prototype that supports multiple layers
 
 
 def _extract_prototype_model_params(conf_module: RegressionWrapper) -> List[Dict[str, torch.Tensor]]:
@@ -36,7 +35,6 @@ def _extract_prototype_model_params(conf_module: RegressionWrapper) -> List[Dict
 
     return [safe_state]
 
-
 # -------------------------
 # Default params / sampler
 # -------------------------
@@ -52,7 +50,7 @@ def _default_prototype_multi_params(**kwargs) -> Dict[str, Any]:
             max_layer = get_max_layer_index(dataset_info, architecture) or 0
         except Exception:
             pass
-
+    
     # Create params with only first layer enabled
     params = {
         "reducer_name": None,
@@ -68,25 +66,23 @@ def _default_prototype_multi_params(**kwargs) -> Dict[str, Any]:
         "use_correct_only": False,
         "layer_indices": [0],  # Default to first layer only
     }
-
+    
     # Add mask format for Optuna
     for i in range(max_layer + 1):
         params[f"use_layer_{i}"] = 1 if i == 0 else 0
-
+    
     return params
 
-
-def _sample_prototype_multi_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None,
-                                   **kwargs) -> Dict[str, Any]:
+def _sample_prototype_multi_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     # Get the actual maximum layer index
     max_layer = get_max_layer_index(dataset_info, architecture)
     if max_layer is None:
         max_layer = 0
-
+    
     # Sample binary mask for which layers to use
     mask = [trial.suggest_categorical(f"use_layer_{i}", [0, 1])
             for i in range(max_layer + 1)]
-
+    
     layer_indices = [i for i, flag in enumerate(mask) if flag]
     if not layer_indices:
         # Ensure at least one layer
@@ -133,10 +129,10 @@ def _sample_prototype_multi_params(trial: optuna.Trial, train_cache=None, datase
 
 
 def _resolve_layer_indices_explicit_or_all(
-        layer_indices: Optional[List[int]],
-        train_cache,
-        dataset_info,
-        architecture,
+    layer_indices: Optional[List[int]],
+    train_cache,
+    dataset_info,
+    architecture,
 ) -> List[int]:
     """Resolve layer indices: explicit list or all available layers."""
     if layer_indices is not None:
@@ -149,22 +145,21 @@ def _resolve_layer_indices_explicit_or_all(
     except Exception:
         return [0]
 
-
 # -------------------------
 # Factory
 # -------------------------
 
 @torch.no_grad()
 def _create_prototype_multi_problem(
-        params: Dict[str, Any],
-        train_cache,
-        transform_seq,
-        dataset_info,
-        architecture,
-        val_id_loader=None,
-        val_ood_loader=None,
-        device: str = "cpu",
-        **kwargs
+    params: Dict[str, Any],
+    train_cache,
+    transform_seq,
+    dataset_info,
+    architecture,
+    val_id_loader=None,
+    val_ood_loader=None,
+    device: str = "cpu",
+    **kwargs
 ) -> TransformationProblem:
     """Multi-layer prototype factory."""
     layer_indices: Optional[List[int]] = params.get("layer_indices", None)
@@ -194,8 +189,7 @@ def _create_prototype_multi_problem(
             )
         else:
             embeddings_t, _, classes_t = train_cache(
-                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True,
-                reducer_select=reducer_name
+                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True, reducer_select=reducer_name
             )
 
         # Add validation
@@ -226,8 +220,7 @@ def _create_prototype_multi_problem(
         layer_ios.append(layer_io)
 
     model_wrapper = train_cache.make_wrapper(
-        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name,
-        return_final=False
+        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name, return_final=False
     )
 
     aggregator = make_aggregator(k=len(sub_confs), kind=params.get("aggregator_kind", "linear"))
@@ -238,11 +231,13 @@ def _create_prototype_multi_problem(
         freeze_subs=params.get("freeze_subs", True),
         scaler=params.get("scaler", "none"),
         lr=params.get("lr", 1e-2),
-        epochs=int(params.get("epochs", 50)), pred_y=False,
+        epochs=int(params.get("epochs", 50)),pred_y=False,
     )
 
     final_conf = RegressionWrapper(model_wrapper, reg_conf)
     final_conf.to(device)
+
+
 
     model_params = kwargs.get("model_params")
     if model_params and len(model_params) > 0:
@@ -253,7 +248,6 @@ def _create_prototype_multi_problem(
         print("Fitted prototype multi-layer aggregator on validation data.")
 
     return TransformationProblem(final_conf, transform_seq, consolidate_method="consolidate_simple")
-
 
 # -------------------------
 # Register

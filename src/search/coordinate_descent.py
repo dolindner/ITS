@@ -1,6 +1,5 @@
 import torch
 
-
 def _build_param_index_map(param_sizes):
     """
     Given a list of param_sizes per transform, return a list of (transform_idx, inner_idx)
@@ -26,11 +25,11 @@ class CoordinateDescent:
         self.number_samples = number_samples
 
     def optimize(
-            self,
-            transformation_problem,
-            x: torch.Tensor,
-            y: torch.Tensor = None,
-            verbose: bool = False
+        self,
+        transformation_problem,
+        x: torch.Tensor,
+        y: torch.Tensor = None,
+        verbose: bool = False
     ):
         device = x.device
         batch_size = x.size(0)
@@ -133,18 +132,18 @@ class WeightedCoordinateDescent:
         self.rounds = rounds
 
     def optimize(
-            self,
-            transformation_problem,
-            x: torch.Tensor,
-            y: torch.Tensor = None,
-            verbose: bool = False
+        self,
+        transformation_problem,
+        x: torch.Tensor,
+        y: torch.Tensor = None,
+        verbose: bool = False
     ):
         device = x.device
         batch_size = x.size(0)
 
         # determine dimension
-        _, _, dim = transformation_problem.initial_param(batch_size, 1) \
-            .view(batch_size, 1, -1).shape
+        _, _, dim = transformation_problem.initial_param(batch_size, 1)\
+                                     .view(batch_size, 1, -1).shape
         assert len(self.samples_per_dim) == dim, \
             f"Expected {dim} samples_per_dim, got {len(self.samples_per_dim)}"
 
@@ -175,8 +174,7 @@ class WeightedCoordinateDescent:
                 if n_disc is not None and n_disc > 0 and n_disc <= n and supports_orbit:
                     vals = transform.orbit(n_samples=n_disc, domain=domain, dim=inner_idx)
                     if vals is not None:
-                        vals = torch.as_tensor(vals, device=device,
-                                               dtype=transformation_problem.initial_param(1, 1).dtype)
+                        vals = torch.as_tensor(vals, device=device, dtype=transformation_problem.initial_param(1,1).dtype)
                         if vals.dim() == 1:
                             vals = vals.unsqueeze(-1)
                         if vals.size(-1) > 1:
@@ -199,9 +197,9 @@ class WeightedCoordinateDescent:
             for d in range(dim):
                 cand = cand_vals_per_dim[d]
                 ccount = cand.size(1)
-                trials = best_params.unsqueeze(1) \
-                    .expand(-1, ccount, -1) \
-                    .clone()
+                trials = best_params.unsqueeze(1)\
+                                     .expand(-1, ccount, -1)\
+                                     .clone()
                 trials[:, :, d] = cand
 
                 flat = trials.reshape(-1, dim)

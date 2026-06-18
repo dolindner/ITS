@@ -1,21 +1,21 @@
 from typing import Dict, Any, List, Optional
-
 import optuna
 import torch
 
-from confidence.control.regression import RegressionConfidence, make_aggregator
-from confidence.control.regression_wrapper import RegressionWrapper
-from confidence.unsupervised.classic.mahalanobis import PrototypeMahalanobisConfidence
-from confidence.unsupervised.classic.mahalanobis_relative import RelativeMahalanobisConfidence
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
     OOD_PROBLEM_FACTORIES,
     OOD_MODEL_PARAM_EXTRACTORS,
 )
-from model.get_model import get_max_layer_index, get_network_layer
 from src.utils.transformation_problem import TransformationProblem
+from model.get_model import get_max_layer_index, get_network_layer
+from confidence.model.single_pass import SinglePassConfidence
+from confidence.control.regression import RegressionConfidence, make_aggregator
+from confidence.control.regression_wrapper import RegressionWrapper
 
+from confidence.unsupervised.classic.mahalanobis import PrototypeMahalanobisConfidence
+from confidence.unsupervised.classic.mahalanobis_relative import RelativeMahalanobisConfidence
 
 # -------------------------
 # Model Parameter Extractor, from the regresssion module so that it can be restored when applied to the test set.
@@ -38,7 +38,6 @@ def _extract_maha_model_params(conf_module) -> List[Dict[str, torch.Tensor]]:
 
     return [safe_state]
 
-
 # -------------------------
 # Default params / sampler
 # -------------------------
@@ -56,7 +55,7 @@ def _default_maha_params(**kwargs) -> Dict[str, Any]:
             max_layer = get_max_layer_index(dataset_info, architecture) or 0
         except Exception:
             pass
-
+    
     params = {
         "reducer_name": None,
         "eps": 0,
@@ -69,12 +68,13 @@ def _default_maha_params(**kwargs) -> Dict[str, Any]:
         "use_correct_only": False,
         "layer_indices": [0],  # Default to first layer only
     }
-
+    
     # Add mask format for Optuna sampling
     for i in range(max_layer + 1):
         params[f"use_layer_{i}"] = 1 if i == 0 else 0
-
+    
     return params
+
 
 
 def _default_rmd_params(**kwargs) -> Dict[str, Any]:
@@ -89,17 +89,16 @@ def _default_rmd_params(**kwargs) -> Dict[str, Any]:
     return p
 
 
-def _sample_maha_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[
-    str, Any]:
+def _sample_maha_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     # Get the actual maximum layer index
     max_layer = get_max_layer_index(dataset_info, architecture)
     if max_layer is None:
         max_layer = 0
-
+    
     # Sample binary mask for which layers to use
     mask = [trial.suggest_categorical(f"use_layer_{i}", [0, 1])
             for i in range(max_layer + 1)]
-    # build layer indices from the sampled values.
+    #build layer indices from the sampled values.
     layer_indices = [i for i, flag in enumerate(mask) if flag]
     if not layer_indices:
         # Ensure at least one layer
@@ -129,9 +128,8 @@ def _sample_maha_params(trial: optuna.Trial, train_cache=None, dataset_info=None
         "reducer_name": reducer_name,  # Now single value
         "eps": 0,
         "shared_covariance": True,
-        "aggregator_kind": trial.suggest_categorical("aggregator_kind", ["linear", ]),
-        # Original used linear combination.
-        "scaler": trial.suggest_categorical("scaler", ["none", ]),
+        "aggregator_kind": trial.suggest_categorical("aggregator_kind", ["linear",]), #Original used linear combination.
+        "scaler": trial.suggest_categorical("scaler", ["none",]),
         "freeze_subs": True,
         "lr": float(trial.suggest_float("lr", 1e-4, 1e-1, log=True)),
         "epochs": int(trial.suggest_int("epochs", 50, 500)),
@@ -144,9 +142,7 @@ def _sample_maha_params(trial: optuna.Trial, train_cache=None, dataset_info=None
 
     return params
 
-
-def _sample_rmd_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[
-    str, Any]:
+def _sample_rmd_params(trial: optuna.Trial, train_cache=None, dataset_info=None, architecture=None, **kwargs) -> Dict[str, Any]:
     p = _sample_maha_params(trial, train_cache, dataset_info, architecture, **kwargs)
     p["mahalanobis_eps"] = p.get("eps", 0)
     p["shared_covariance"] = p.get("shared_covariance", True)
@@ -158,10 +154,10 @@ def _sample_rmd_params(trial: optuna.Trial, train_cache=None, dataset_info=None,
 # -------------------------
 
 def _resolve_layer_indices_explicit_or_all(
-        layer_indices: Optional[List[int]],
-        train_cache,
-        dataset_info,
-        architecture,
+    layer_indices: Optional[List[int]],
+    train_cache,
+    dataset_info,
+    architecture,
 ) -> List[int]:
     """
     Simplified resolver: if layer_indices provided, return it.
@@ -178,22 +174,21 @@ def _resolve_layer_indices_explicit_or_all(
     except Exception:
         return [0]
 
-
 # -------------------------
 # Factory to build problem (Mahalanobis)
 # -------------------------
 
 @torch.no_grad()
 def _create_maha_problem(
-        params: Dict[str, Any],
-        train_cache,
-        transform_seq,
-        dataset_info,
-        architecture,
-        val_id_loader=None,
-        val_ood_loader=None,
-        device: str = "cpu",
-        **kwargs
+    params: Dict[str, Any],
+    train_cache,
+    transform_seq,
+    dataset_info,
+    architecture,
+    val_id_loader=None,
+    val_ood_loader=None,
+    device: str = "cpu",
+    **kwargs
 ) -> TransformationProblem:
     """
     Mahalanobis factory (plain Mahalanobis). Uses its own defaults and expects
@@ -229,9 +224,9 @@ def _create_maha_problem(
             )
         else:
             embeddings_t, _, classes_t = train_cache(
-                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True,
-                reducer_select=reducer_name
+                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True, reducer_select=reducer_name
             )
+
 
         cov_mode = params.get("cov_mode", "full")
         low_rank_r = params.get("low_rank_r", 64)
@@ -249,9 +244,9 @@ def _create_maha_problem(
         layer_names.append(layer)
         layer_ios.append(layer_io)
 
+
     model_wrapper = train_cache.make_wrapper(
-        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name,
-        return_final=False
+        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name, return_final=False
     )
 
     aggregator = make_aggregator(k=len(sub_confs), kind=params.get("aggregator_kind", "linear"))
@@ -278,22 +273,21 @@ def _create_maha_problem(
 
     return TransformationProblem(final_conf, transform_seq, consolidate_method="consolidate_simple")
 
-
 # -------------------------
 # Factory to build problem (Relative Mahalanobis / RMD)
 # -------------------------
 
 @torch.no_grad()
 def _create_rmd_problem(
-        params: Dict[str, Any],
-        train_cache,
-        transform_seq,
-        dataset_info,
-        architecture,
-        val_id_loader=None,
-        val_ood_loader=None,
-        device: str = "cpu",
-        **kwargs
+    params: Dict[str, Any],
+    train_cache,
+    transform_seq,
+    dataset_info,
+    architecture,
+    val_id_loader=None,
+    val_ood_loader=None,
+    device: str = "cpu",
+    **kwargs
 ) -> TransformationProblem:
     """
     Dedicated factory for Relative Mahalanobis Distance (RMD).
@@ -328,8 +322,7 @@ def _create_rmd_problem(
             )
         else:
             embeddings_t, _, classes_t = train_cache(
-                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True,
-                reducer_select=reducer_name
+                layer, capture_modes=layer_io, flatten=True, return_y=True, return_final=True, reducer_select=reducer_name
             )
 
         # Get cov_mode/low_rank_r from params if available, default to full/64.
@@ -354,12 +347,11 @@ def _create_rmd_problem(
 
     # Universal wrapper. Returns ([feat1, feat2, ...], final_output)
     model_wrapper = train_cache.make_wrapper(
-        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name,
-        return_final=False
+        layer_names, capture_modes=layer_ios, concat=False, flatten=True, reducer_select=reducer_name, return_final=False
     )
 
     aggregator = make_aggregator(k=len(sub_confs), kind=params.get("aggregator_kind", "linear"))
-    # Use regression wrapper
+    #Use regression wrapper
     reg_conf = RegressionConfidence(
         sub_confs=sub_confs,
         aggregator=aggregator,
@@ -388,9 +380,10 @@ def _create_rmd_problem(
 OOD_DEFAULT_PARAM_FACTORIES["mahalanobis"] = _default_maha_params
 OOD_PARAM_SAMPLERS["mahalanobis"] = _sample_maha_params
 OOD_PROBLEM_FACTORIES["mahalanobis"] = _create_maha_problem
-OOD_MODEL_PARAM_EXTRACTORS["mahalanobis"] = _extract_maha_model_params  # method to save fitted regression module.
+OOD_MODEL_PARAM_EXTRACTORS["mahalanobis"] = _extract_maha_model_params #method to save fitted regression module.
 
 OOD_DEFAULT_PARAM_FACTORIES["rmd"] = _default_rmd_params
 OOD_PARAM_SAMPLERS["rmd"] = _sample_rmd_params
 OOD_PROBLEM_FACTORIES["rmd"] = _create_rmd_problem
 OOD_MODEL_PARAM_EXTRACTORS["rmd"] = _extract_maha_model_params
+

@@ -1,15 +1,14 @@
 # TRANSFORMATION ENGINE / BACKEND
 
-from enum import Enum
-
 import torch
 import torch.nn.functional as F
 import torchvision
+from enum import Enum
 
 from src.utils.affine_transforms import AffineTransformation2D
 
 
-# taken from its package
+#taken from its package
 
 
 def identity(batch_size=1, device='cuda', truncate=False, d=3):
@@ -149,10 +148,10 @@ def get_rotation_param_orbit(n_samples=16, domain=None, extend=0, shift=1):
     domain = torch.tensor(torch.pi) if domain is None else domain
     orbit = torch.linspace(-domain, domain, n_samples)
     if extend > 0:
-        left_extend = orbit[0] + torch.tensor([(-2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
-        right_extend = orbit[-1] + torch.tensor([(2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        left_extend = orbit[0] + torch.tensor([(-2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        right_extend = orbit[-1] + torch.tensor([(2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
         orbit = torch.concat([left_extend, orbit, right_extend], dim=0)
-    return orbit[:, None] + shift * (2 * domain / n_samples)
+    return orbit[:, None] + shift * (2*domain / n_samples)
 
 
 def get_translation_hor_param(n, n_samples=16, domain=None):
@@ -183,10 +182,10 @@ def get_translation_hor_param_orbit(n_samples=16, domain=None, extend=0, shift=0
     domain = 0.5 if domain is None else domain
     orbit = torch.linspace(-domain, domain, n_samples)
     if extend > 0:
-        left_extend = orbit[0] + torch.tensor([(-2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
-        right_extend = orbit[-1] + torch.tensor([(2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        left_extend = orbit[0] + torch.tensor([(-2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        right_extend = orbit[-1] + torch.tensor([(2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
         orbit = torch.concat([left_extend, orbit, right_extend], dim=0)
-    orbit = orbit[:, None] + shift * (2 * domain / n_samples)
+    orbit = orbit[:, None] + shift * (2*domain / n_samples)
     return torch.concat([orbit, torch.zeros_like(orbit)], dim=-1)
 
 
@@ -218,10 +217,10 @@ def get_translation_ver_param_orbit(n_samples=16, domain=None, extend=0, shift=0
     domain = 0.5 if domain is None else domain
     orbit = torch.linspace(-domain, domain, n_samples)
     if extend > 0:
-        left_extend = orbit[0] + torch.tensor([(-2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
-        right_extend = orbit[-1] + torch.tensor([(2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        left_extend = orbit[0] + torch.tensor([(-2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        right_extend = orbit[-1] + torch.tensor([(2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
         orbit = torch.concat([left_extend, orbit, right_extend], dim=0)
-    orbit = orbit[:, None] + shift * (2 * domain / n_samples)
+    orbit = orbit[:, None] + shift * (2*domain / n_samples)
     return torch.concat([torch.zeros_like(orbit), orbit], dim=-1)
 
 
@@ -253,10 +252,10 @@ def get_scaling_param_orbit(n_samples=16, domain=None, extend=0, shift=0):
     domain = 0.25 if domain is None else domain
     orbit = torch.linspace(-domain, domain, n_samples)
     if extend > 0:
-        left_extend = orbit[0] + torch.tensor([(-2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
-        right_extend = orbit[-1] + torch.tensor([(2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        left_extend = orbit[0] + torch.tensor([(-2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        right_extend = orbit[-1] + torch.tensor([(2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
         orbit = torch.concat([left_extend, orbit, right_extend], dim=0)
-    orbit = orbit[:, None] + shift * (2 * domain / n_samples)
+    orbit = orbit[:, None] + shift * (2*domain / n_samples)
     return torch.concat([orbit, orbit], dim=-1)
 
 
@@ -288,10 +287,10 @@ def get_shearing_param_orbit(n_samples=16, domain=None, extend=0, shift=0):
     domain = 0.2 if domain is None else domain
     orbit = torch.linspace(-domain, domain, n_samples)
     if extend > 0:
-        left_extend = orbit[0] + torch.tensor([(-2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
-        right_extend = orbit[-1] + torch.tensor([(2 * domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        left_extend = orbit[0] + torch.tensor([(-2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
+        right_extend = orbit[-1] + torch.tensor([(2*domain / n_samples) * i for i in torch.arange(1, extend + 1)])
         orbit = torch.concat([left_extend, orbit, right_extend], dim=0)
-    orbit = orbit[:, None] + shift * (2 * domain / n_samples)
+    orbit = orbit[:, None] + shift * (2*domain / n_samples)
     return torch.concat([orbit, torch.zeros_like(orbit)], dim=-1)
 
 
@@ -317,29 +316,29 @@ class AffineTransformation(Enum):
              AffineTransformation.TRANSLATION.value['param'][0](7)
     """
     TRANSLATION = {
-        "matrix": translate,
-        "param": (get_translation_hor_param, get_translation_ver_param),
-        "orbit": (get_translation_hor_param_orbit, get_translation_ver_param_orbit)
+       "matrix": translate,
+       "param": (get_translation_hor_param, get_translation_ver_param),
+       "orbit": (get_translation_hor_param_orbit, get_translation_ver_param_orbit)
     }
     ROTATION = {
-        "matrix": rotate,
-        "param": (get_rotation_param,),
-        "orbit": (get_rotation_param_orbit,)
+       "matrix": rotate,
+       "param": (get_rotation_param, ),
+       "orbit": (get_rotation_param_orbit, )
     }
     SCALING = {
-        "matrix": scale,
-        "param": (get_scaling_param,),
-        "orbit": (get_scaling_param_orbit,)
+       "matrix": scale,
+       "param": (get_scaling_param, ),
+       "orbit": (get_scaling_param_orbit, )
     }
     SHEARING = {
-        "matrix": shear,
-        "param": (get_shearing_param,),
-        "orbit": (get_shearing_param_orbit,)
+       "matrix": shear,
+       "param": (get_shearing_param, ),
+       "orbit": (get_shearing_param_orbit, )
     }
-    REFLECTION = {  # TODO implement
-        "matrix": reflect,
-        "param": (get_reflection_param,),
-        # "orbit": (get_reflection_param_orbit, )
+    REFLECTION = { # TODO implement
+       "matrix": reflect,
+       "param": (get_reflection_param, ),
+       # "orbit": (get_reflection_param_orbit, )
     }
 
 
@@ -371,8 +370,7 @@ def multi_transform(x: torch.Tensor, trans_func: list, n: torch.Tensor,
     return resampling(x, T_composed), T, T_composed
 
 
-def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1, resample_fn=None, orig_data_dim=4,
-                   matrix_dim=3):
+def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1, resample_fn=None,orig_data_dim=4, matrix_dim=3):
     """ Returns the orbit samples given a signal x along its orbits.
     :param x: (batch x channel x width x height)
     :param trans_func: (batch x orbits) with the latter being `AffineTransformation` values
@@ -402,8 +400,8 @@ def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1, r
 
     # choose resampling function: override if provided, otherwise use module resampling()
     resampler = resample_fn if resample_fn is not None else resampling
-    # flatten x to orig data dim
-    Tx = resampler(x.flatten(end_dim=x.dim() - orig_data_dim), torch.stack(T).flatten(end_dim=2))
+    #flatten x to orig data dim
+    Tx = resampler(x.flatten(end_dim=x.dim()-orig_data_dim), torch.stack(T).flatten(end_dim=2))
 
     # (orbits * batch * samples x channel x width x height) -> (batch x orbits x samples x channel x width x height)
     return Tx.unflatten(0, (O, B, n_samples + 2 * extend)).swapaxes(0, 1), T
@@ -411,19 +409,20 @@ def orbit_sampling(x, trans_func, n_samples=16, T=None, domain=None, extend=1, r
 
 def get_n(n_transformations, _max=16, batch_size=128, device='cuda'):
     if _max > 0:
-        n = torch.randint(0, _max, size=(batch_size, n_transformations))  # .cuda()
+        n = torch.randint(0, _max, size=(batch_size, n_transformations))#.cuda()
     else:
-        n = torch.zeros((batch_size, n_transformations), dtype=int)  # .cuda()
+        n = torch.zeros((batch_size, n_transformations), dtype=int)#.cuda()
     return n.to(device)
 
 
+
 if __name__ == '__main__':
-    # test orbit sampling for translation
+    #test orbit sampling for translation
     x = torch.randn((2, 1, 28, 28)).cuda()
 
     # translation = torch.tensor([0.5, 0.5]).cuda()
-    transformations = [AffineTransformation2D.TRANSLATION.value, ]
+    transformations = [AffineTransformation2D.TRANSLATION.value,]
 
-    domains = [[0.5, 0.5], ]
+    domains = [[0.5,0.5],]
     n_samples = 16
     orbit_sampling(x, transformations[0], n_samples=n_samples, domain=domains)

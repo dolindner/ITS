@@ -1,15 +1,20 @@
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional
-
 import numpy as np
 import torch
 from pytorch_ood.detector import OpenMax
 from scipy.stats import exponweib
 from torch import Tensor
-
-from confidence.input_transform import InputTransform
+from typing import Optional
+from confidence.base_confidence import ConfidenceModule
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
+from confidence.input_transform import InputTransform
+
+
+
+
+
+import torch
+import torch.nn.functional as F
+from typing import Optional
 
 
 class OpenMaxConfidence(ClassicConfidenceBase):
@@ -143,7 +148,7 @@ class OpenMaxConfidence(ClassicConfidenceBase):
         return 1 - self._forward_logits(x, y)
 
 
-# reference implementaion via pytorch_ood.
+#reference implementaion via pytorch_ood.
 class OpenMaxConfidenceNumpy(ClassicConfidenceBase):
     """
     Simple wrapper around PyTorch-OOD's OpenMax.
@@ -176,7 +181,6 @@ class OpenMaxConfidenceNumpy(ClassicConfidenceBase):
         """
         self._openmax.fit_features(x, y)
         return self
-
     @torch.no_grad()
     def _forward(self, x: Tensor, y: Optional[Tensor] = None) -> Tensor:
         """
@@ -201,8 +205,6 @@ class OpenMaxConfidenceNumpy(ClassicConfidenceBase):
             Tensor: class centers tensor.
         """
         return self._openmax._openmax.centers
-
-
 if __name__ == '__main__':
     import torch
     import torch.nn as nn
@@ -215,17 +217,13 @@ if __name__ == '__main__':
     X, y = make_blobs(n_samples=200, centers=2, n_features=2, random_state=42)
     X = torch.tensor(X, dtype=torch.float32)
     y = torch.tensor(y, dtype=torch.long)
-
-
-    # linear classifier
+    #linear classifier
     class SimpleNet(nn.Module):
         def __init__(self):
             super().__init__()
             self.fc = nn.Linear(2, 2)
-
         def forward(self, x):
             return self.fc(x)
-
 
     model = SimpleNet()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.05)

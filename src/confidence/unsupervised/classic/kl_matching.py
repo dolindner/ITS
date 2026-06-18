@@ -1,12 +1,13 @@
+import torch
 from typing import Optional, Union
 
-import torch
-from pytorch_ood.detector.klmatching import KLMatching
+from torch import device
 from torch.nn import Module
+from torch.nn.modules.module import T
 
 from confidence.input_transform import InputTransform
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
-
+from pytorch_ood.detector.klmatching import KLMatching
 
 class KLMatchingConfidence(ClassicConfidenceBase):
     """
@@ -23,10 +24,10 @@ class KLMatchingConfidence(ClassicConfidenceBase):
     """
 
     def __init__(
-            self,
-            model: Module = None,
-            input_transform: Optional[InputTransform] = None,
-            map_function: Optional[callable] = None
+        self,
+        model: Module=None,
+        input_transform: Optional[InputTransform] = None,
+        map_function: Optional[callable] = None
     ):
         super().__init__(input_transform=input_transform)
         self.model = model
@@ -35,9 +36,9 @@ class KLMatchingConfidence(ClassicConfidenceBase):
         self.map_function = map_function or (lambda x: -x)
 
     def _fit(
-            self,
-            X: torch.Tensor,
-            y: Optional[torch.Tensor] = None
+        self,
+        X: torch.Tensor,
+        y: Optional[torch.Tensor] = None
     ) -> "KLMatchingConfidence":
         """
         Fit detector using logits and labels.
@@ -57,9 +58,9 @@ class KLMatchingConfidence(ClassicConfidenceBase):
         return self
 
     def _forward(
-            self,
-            x: torch.Tensor,
-            y=None
+        self,
+        x: torch.Tensor,
+        y=None
     ) -> torch.Tensor:
         """
         Predict mapped confidence from logits.
@@ -77,6 +78,7 @@ class KLMatchingConfidence(ClassicConfidenceBase):
         x = torch.nn.functional.softmax(x, dim=-1)
         scores = self.detector.predict_features(x)
         return self.map_function(scores)
+
 
     def to(self, *args, **kwargs) -> "KLMatchingConfidence":
         """

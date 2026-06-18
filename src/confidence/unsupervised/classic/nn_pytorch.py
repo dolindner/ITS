@@ -1,12 +1,13 @@
-from abc import abstractmethod
-from typing import Optional, Callable, Tuple, Literal, Union
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-
+from typing import Optional, Callable, Tuple, Any, Literal, Union
+from confidence.base_confidence import ConfidenceModule
 from confidence.input_transform import InputTransform
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
+
 
 
 def default_confidence_function(x: torch.Tensor) -> torch.Tensor:
@@ -33,12 +34,12 @@ def _compute_cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def mixed_distance_fast(
-        x: torch.Tensor,
-        y: torch.Tensor,
-        alpha: float = 0.5,  # weight for Euclidean part
-        eps: float = 1e-8,
-        squared: bool = False,  # if True return squared-Euclidean (avoids sqrt)
-        normalize_euclid: bool = True,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    alpha: float = 0.5,         # weight for Euclidean part
+    eps: float = 1e-8,
+    squared: bool = False,      # if True return squared-Euclidean (avoids sqrt)
+    normalize_euclid: bool = True,
 ) -> torch.Tensor:
     """
     Mixed distance between unnormalized x (N,d) and y (M,d).
@@ -57,14 +58,14 @@ def mixed_distance_fast(
         Mixed distance matrix (N, M).
     """
     # Precompute norms and cross-product
-    x_norm_sq = (x * x).sum(dim=1)  # (N,)
-    y_norm_sq = (y * y).sum(dim=1)  # (M,)
-    cross = x @ y.t()  # (N, M)
+    x_norm_sq = (x * x).sum(dim=1)            # (N,)
+    y_norm_sq = (y * y).sum(dim=1)            # (M,)
+    cross = x @ y.t()                         # (N, M)
 
     # Cosine distance: 1 - (x·y) / (||x|| * ||y||)
-    x_norm = torch.sqrt(x_norm_sq.clamp(min=eps))  # (N,)
-    y_norm = torch.sqrt(y_norm_sq.clamp(min=eps))  # (M,)
-    denom = x_norm[:, None] * y_norm[None, :]  # (N, M)
+    x_norm = torch.sqrt(x_norm_sq.clamp(min=eps))   # (N,)
+    y_norm = torch.sqrt(y_norm_sq.clamp(min=eps))   # (M,)
+    denom = x_norm[:, None] * y_norm[None, :]       # (N, M)
     cos_sim = cross / (denom + eps)
     # numeric safety: clamp cosine to [-1,1] if you rely on it
     cos_sim = cos_sim.clamp(-1.0, 1.0)
@@ -72,7 +73,7 @@ def mixed_distance_fast(
 
     # Euclidean distance (or squared)
     euclid_sq = x_norm_sq[:, None] + y_norm_sq[None, :] - 2.0 * cross
-    euclid_sq = euclid_sq.clamp(min=0.0)  # avoid negatives from precision
+    euclid_sq = euclid_sq.clamp(min=0.0)    # avoid negatives from precision
     if squared:
         euclid = euclid_sq
     else:
@@ -103,7 +104,6 @@ def _compute_mahalanobis_distance(x: torch.Tensor, y: torch.Tensor, inv_cov: tor
     temp = torch.matmul(diff.unsqueeze(2), inv_cov.unsqueeze(0).unsqueeze(0))
     sq = torch.sum(temp * diff.unsqueeze(2), dim=-1).squeeze(2).clamp(min=0)
     return torch.sqrt(sq)
-
 
 def _compute_distance_metric(x: torch.Tensor, y: torch.Tensor, metric, inv_cov=None, **kwargs) -> torch.Tensor:
     """
@@ -151,12 +151,12 @@ def _topk_recompute_euclidean(x: torch.Tensor, y: torch.Tensor, k: int) -> torch
     with torch.no_grad():
         D_all = torch.cdist(x, y, p=2)
         vals, idx = D_all.topk(k, dim=1, largest=False)
-
+    
     # Recompute only top-k distances for backward
     y_topk = y[idx]  # [N_query, k, D]
     x_expand = x[:, None, :]  # [N_query, 1, D]
     D_topk = (x_expand - y_topk).pow(2).sum(dim=2).sqrt()
-
+    
     return D_topk
 
 
@@ -175,21 +175,21 @@ def _topk_recompute_cosine(x: torch.Tensor, y: torch.Tensor, k: int) -> torch.Te
     with torch.no_grad():
         D_all = _compute_cosine_distance(x, y)
         vals, idx = D_all.topk(k, dim=1, largest=False)
-
+    
     # Recompute only top-k cosine distances for backward
     y_topk = y[idx]  # [N_query, k, D]
     x_expand = x[:, None, :]  # [N_query, 1, D]
-
+    
     x_norm = F.normalize(x_expand, p=2, dim=2)
     y_norm = F.normalize(y_topk, p=2, dim=2)
     sim = (x_norm * y_norm).sum(dim=2)
     D_topk = 1.0 - sim
-
+    
     return D_topk
 
 
-def _topk_recompute_mixed(x: torch.Tensor, y: torch.Tensor, k: int, alpha: float = 0.5,
-                          eps: float = 1e-8, squared: bool = False,
+def _topk_recompute_mixed(x: torch.Tensor, y: torch.Tensor, k: int, alpha: float = 0.5, 
+                          eps: float = 1e-8, squared: bool = False, 
                           normalize_euclid: bool = True) -> torch.Tensor:
     """
     Compute top-k mixed distances with recomputation for efficient backward.
@@ -203,28 +203,28 @@ def _topk_recompute_mixed(x: torch.Tensor, y: torch.Tensor, k: int, alpha: float
     """
     with torch.no_grad():
         # Find top-k using full distance computation
-        D_all = mixed_distance_fast(x, y, alpha=alpha, eps=eps, squared=squared,
+        D_all = mixed_distance_fast(x, y, alpha=alpha, eps=eps, squared=squared, 
                                     normalize_euclid=normalize_euclid)
         vals, idx = D_all.topk(k, dim=1, largest=False)
-
+    
     # Recompute only top-k mixed distances for backward
     # Must use the SAME computation as mixed_distance_fast to get correct gradients
     y_topk = y[idx]  # [N_query, k, D]
-
+    
     # Recompute exactly as in mixed_distance_fast but only for top-k
     x_norm_sq = (x * x).sum(dim=1)  # (N,)
     y_topk_norm_sq = (y_topk * y_topk).sum(dim=2)  # (N, k)
-
+    
     # Cross product for top-k
     cross = torch.bmm(x.unsqueeze(1), y_topk.transpose(1, 2)).squeeze(1)  # (N, k)
-
+    
     # Cosine distance
     x_norm = torch.sqrt(x_norm_sq.clamp(min=eps))  # (N,)
     y_topk_norm = torch.sqrt(y_topk_norm_sq.clamp(min=eps))  # (N, k)
     denom = x_norm[:, None] * y_topk_norm  # (N, k)
     cos_sim = (cross / (denom + eps)).clamp(-1.0, 1.0)
     cos_dist = 1.0 - cos_sim
-
+    
     # Euclidean distance
     euclid_sq = x_norm_sq[:, None] + y_topk_norm_sq - 2.0 * cross
     euclid_sq = euclid_sq.clamp(min=0.0)
@@ -238,13 +238,12 @@ def _topk_recompute_mixed(x: torch.Tensor, y: torch.Tensor, k: int, alpha: float
         d = x.shape[1]
         scale = torch.sqrt(torch.tensor(d, device=x.device, dtype=x.dtype))
         euclid = euclid / (scale + eps)
-
+    
     D_topk = alpha * euclid + (1.0 - alpha) * cos_dist
-
+    
     return D_topk
 
-
-def _topk_recompute_mahalanobis(x: torch.Tensor, y: torch.Tensor, k: int,
+def _topk_recompute_mahalanobis(x: torch.Tensor, y: torch.Tensor, k: int, 
                                 inv_cov: torch.Tensor) -> torch.Tensor:
     """
     Compute top-k Mahalanobis distances with recomputation for efficient backward.
@@ -261,25 +260,24 @@ def _topk_recompute_mahalanobis(x: torch.Tensor, y: torch.Tensor, k: int,
     with torch.no_grad():
         D_all = _compute_mahalanobis_distance(x, y, inv_cov)
         vals, idx = D_all.topk(k, dim=1, largest=False)
-
+    
     # Recompute only top-k Mahalanobis distances for backward
     y_topk = y[idx]  # [N_query, k, D]
     diff = x[:, None, :] - y_topk  # [N_query, k, D]
     temp = torch.matmul(diff.unsqueeze(2), inv_cov.unsqueeze(0).unsqueeze(0))
     sq = torch.sum(temp * diff.unsqueeze(2), dim=-1).squeeze(2).clamp(min=0)
     D_topk = torch.sqrt(sq)
-
+    
     return D_topk
 
 
 class DistanceConfidence(ClassicConfidenceBase):
     """Abstract base for distance-based confidence modules."""
-
     def __init__(
-            self,
-            confidence_function: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-            input_transform: Optional[InputTransform] = None,
-            dtype: torch.dtype = None
+        self,
+        confidence_function: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        input_transform: Optional[InputTransform] = None,
+        dtype: torch.dtype = None
     ):
         super().__init__(input_transform=input_transform)
         self.confidence_function = confidence_function or default_confidence_function
@@ -289,7 +287,8 @@ class DistanceConfidence(ClassicConfidenceBase):
         """The data type used for storing training data and for computation."""
         return torch.float32
 
-    def _forward(self, x: torch.Tensor, y=None) -> torch.Tensor:
+
+    def _forward(self, x: torch.Tensor, y = None) -> torch.Tensor:
         """
         Compute confidence from distances for a batch.
 
@@ -306,6 +305,7 @@ class DistanceConfidence(ClassicConfidenceBase):
         conf = self.confidence_function(dist)
         return conf.to(original_dtype)
 
+
     @abstractmethod
     def _compute_distance(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -320,8 +320,7 @@ class DistanceConfidence(ClassicConfidenceBase):
         """
         pass
 
-
-# uses biased estimator by diving by n like in paper https://proceedings.neurips.cc/paper_files/paper/2018/file/abdeb6f575ac5c6676b747bca8d09cc2-Paper.pdf
+#uses biased estimator by diving by n like in paper https://proceedings.neurips.cc/paper_files/paper/2018/file/abdeb6f575ac5c6676b747bca8d09cc2-Paper.pdf
 def _compute_global_mean_inv_cov(x: torch.Tensor, eps: float) -> Tuple[torch.Tensor, torch.Tensor]:
     original_dtype = x.dtype
     x_f32 = x.to(torch.float32)
@@ -332,7 +331,6 @@ def _compute_global_mean_inv_cov(x: torch.Tensor, eps: float) -> Tuple[torch.Ten
     cov = cov + torch.eye(x_f32.size(1), dtype=torch.float32, device=x.device) * eps
     inv_cov = torch.linalg.pinv(cov)
     return mu.to(original_dtype), inv_cov.to(original_dtype)
-
 
 def _compute_per_class_means_inv_covs(x: torch.Tensor, y_idx: torch.Tensor, eps: float):
     """
@@ -370,34 +368,32 @@ def _compute_per_class_means_inv_covs(x: torch.Tensor, y_idx: torch.Tensor, eps:
     invcovs = torch.linalg.pinv(covs)
     return class_means.to(original_dtype), invcovs.to(original_dtype)
 
-
 def _remap_labels_to_indices(y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     labels_unique = torch.unique(y, sorted=True)
     y_idx = torch.searchsorted(labels_unique, y)
     return labels_unique, y_idx
 
-
 def _mahalanobis_distance_per_class_vectorized(
         x_query, class_means, class_inv_covs, y_idx_query
-) -> torch.Tensor:
-    mu = class_means[y_idx_query]
-    invcov = class_inv_covs[y_idx_query]
-    diff = x_query - mu
-    left = (diff.unsqueeze(1) @ invcov)  # N×1×D
-    sq = (left @ diff.unsqueeze(2)).squeeze()
-    return torch.sqrt(torch.clamp(sq, min=0.0))
+    ) -> torch.Tensor:
+        mu = class_means[y_idx_query]
+        invcov = class_inv_covs[y_idx_query]
+        diff = x_query - mu
+        left = (diff.unsqueeze(1) @ invcov)  # N×1×D
+        sq = (left @ diff.unsqueeze(2)).squeeze()
+        return torch.sqrt(torch.clamp(sq, min=0.0))
 
 
 def _knn_distance_per_class_vectorized(
         x_query, x_train, y_idx_query, y_idx_train, k: int, metric="euclidean", inv_cov=None, **kwargs
-) -> torch.Tensor:
-    dists = _compute_distance_metric(x_query, x_train, metric, inv_cov, **kwargs)
-    mask = y_idx_query.unsqueeze(1) == y_idx_train.unsqueeze(0)
-    INF = torch.finfo(dists.dtype).max
-    # avoid inplace modification which can break autograd
-    dists = dists.masked_fill(~mask, INF)
-    vals = torch.topk(dists, k=k, dim=1, largest=False).values
-    return vals.mean(1)
+    ) -> torch.Tensor:
+        dists = _compute_distance_metric(x_query, x_train, metric, inv_cov, **kwargs)
+        mask = y_idx_query.unsqueeze(1) == y_idx_train.unsqueeze(0)
+        INF = torch.finfo(dists.dtype).max
+        # avoid inplace modification which can break autograd
+        dists = dists.masked_fill(~mask, INF)
+        vals = torch.topk(dists, k=k, dim=1, largest=False).values
+        return vals.mean(1)
 
 
 def _mahalanobis_knn_per_class(
@@ -418,7 +414,7 @@ def _mahalanobis_knn_per_class(
 
 def _knn_distance_per_class_vectorized_topk_recompute(
         x_query, x_train, y_idx_query, y_idx_train, k: int, metric="euclidean", inv_cov=None, **kwargs
-) -> torch.Tensor:
+    ) -> torch.Tensor:
     """
     Vectorized per-class KNN with top-k recomputation optimization.
     """
@@ -430,10 +426,10 @@ def _knn_distance_per_class_vectorized_topk_recompute(
         dists_nograd = dists_nograd.masked_fill(~mask, INF)
         topk_result = torch.topk(dists_nograd, k=k, dim=1, largest=False)
         idx = topk_result.indices  # [N_query, k]
-
+    
     # Second pass: recompute distances only for top-k with gradients
     x_train_topk = x_train[idx]  # [N_query, k, D]
-
+    
     if metric == "euclidean":
         x_expand = x_query[:, None, :]
         D_topk = (x_expand - x_train_topk).pow(2).sum(dim=2).sqrt()
@@ -449,21 +445,21 @@ def _knn_distance_per_class_vectorized_topk_recompute(
         eps = kwargs.get("eps", 1e-8)
         squared = kwargs.get("squared", False)
         normalize_euclid = kwargs.get("normalize_euclid", True)
-
+        
         # Precompute norms and cross-product for top-k
         x_norm_sq = (x_query * x_query).sum(dim=1)  # (N,)
         y_topk_norm_sq = (x_train_topk * x_train_topk).sum(dim=2)  # (N, k)
-
+        
         # Cross product for top-k
         cross = torch.bmm(x_query.unsqueeze(1), x_train_topk.transpose(1, 2)).squeeze(1)  # (N, k)
-
+        
         # Cosine distance
         x_norm = torch.sqrt(x_norm_sq.clamp(min=eps))  # (N,)
         y_topk_norm = torch.sqrt(y_topk_norm_sq.clamp(min=eps))  # (N, k)
         denom = x_norm[:, None] * y_topk_norm  # (N, k)
         cos_sim = (cross / (denom + eps)).clamp(-1.0, 1.0)
         cos_dist = 1.0 - cos_sim
-
+    
         # Euclidean distance
         euclid_sq = x_norm_sq[:, None] + y_topk_norm_sq - 2.0 * cross
         euclid_sq = euclid_sq.clamp(min=0.0)
@@ -471,27 +467,27 @@ def _knn_distance_per_class_vectorized_topk_recompute(
             euclid = euclid_sq
         else:
             euclid = torch.sqrt(euclid_sq + eps)
-
+    
         if normalize_euclid:
             # Normalize by sqrt(dimension) instead of batch statistics
             d = x_query.shape[1]
             scale = torch.sqrt(torch.tensor(d, device=x_query.device, dtype=x_query.dtype))
             euclid = euclid / (scale + eps)
-
+        
         D_topk = alpha * euclid + (1.0 - alpha) * cos_dist
     elif metric == "mixed_faiss":
         alpha = kwargs.get("alpha", 0.5)
         eps = kwargs.get("eps", 1e-8)
-
+        
         x_norm = x_query / (x_query.norm(dim=1, keepdim=True) + eps)
         y_topk_norm = x_train_topk / (x_train_topk.norm(dim=2, keepdim=True) + eps)
-
+        
         sqrt_alpha = torch.sqrt(torch.tensor(alpha, dtype=x_query.dtype, device=x_query.device))
         sqrt_1ma = torch.sqrt(torch.tensor(1.0 - alpha, dtype=x_query.dtype, device=x_query.device))
-
+        
         x_mix = torch.cat([sqrt_alpha * x_query, sqrt_1ma * x_norm], dim=1)
         y_mix = torch.cat([sqrt_alpha * x_train_topk, sqrt_1ma * y_topk_norm], dim=2)
-
+        
         x_expand = x_mix[:, None, :]
         dist_sq = ((x_expand - y_mix).pow(2).sum(dim=2)).clamp(min=0.0)
         D_topk = torch.sqrt(dist_sq + eps)
@@ -502,19 +498,19 @@ def _knn_distance_per_class_vectorized_topk_recompute(
         D_topk = torch.sqrt(sq)
     else:
         raise ValueError(f"Unknown metric for top-k recompute: {metric}")
-
+    
     return D_topk.mean(1)
 
 
 def _knn_distance_per_class_loop(
-        x_query: torch.Tensor,
-        x_train: torch.Tensor,
-        y_idx_query: torch.Tensor,
-        y_idx_train: torch.Tensor,
-        k: int,
-        metric="euclidean",
-        inv_cov=None,
-        **kwargs
+    x_query: torch.Tensor,
+    x_train: torch.Tensor,
+    y_idx_query: torch.Tensor,
+    y_idx_train: torch.Tensor,
+    k: int,
+    metric="euclidean",
+    inv_cov=None,
+    **kwargs
 ) -> torch.Tensor:
     """
     Loop over classes; compute distances only within the same class.
@@ -545,14 +541,14 @@ def _knn_distance_per_class_loop(
 
 
 def _knn_distance_per_class_loop_topk_recompute(
-        x_query: torch.Tensor,
-        x_train: torch.Tensor,
-        y_idx_query: torch.Tensor,
-        y_idx_train: torch.Tensor,
-        k: int,
-        metric="euclidean",
-        inv_cov=None,
-        **kwargs
+    x_query: torch.Tensor,
+    x_train: torch.Tensor,
+    y_idx_query: torch.Tensor,
+    y_idx_train: torch.Tensor,
+    k: int,
+    metric="euclidean",
+    inv_cov=None,
+    **kwargs
 ) -> torch.Tensor:
     """
     Loop over classes with top-k recomputation optimization.
@@ -568,26 +564,26 @@ def _knn_distance_per_class_loop_topk_recompute(
     """
     classes = torch.unique(y_idx_query)
     out = torch.empty(x_query.size(0), dtype=x_query.dtype, device=x_query.device)
-
+    
     for c in classes:
         q_mask = (y_idx_query == c)
         t_mask = (y_idx_train == c)
         x_q_c = x_query[q_mask]
         x_t_c = x_train[t_mask]
-
+        
         if x_t_c.numel() == 0:
             out[q_mask] = 1e38
             continue
-
+        
         # Find top-k without gradients
         with torch.no_grad():
             d_nograd = _compute_distance_metric(x_q_c, x_t_c, metric, inv_cov, **kwargs)
             idx = torch.topk(d_nograd, k=k, dim=1, largest=False).indices
-
+        
         # Recompute top-k with gradients
         x_t_topk = x_t_c[idx]  # [N_q_c, k, D]
         y_t_topk = x_t_topk  # for consistency in naming
-
+        
         if metric == "euclidean":
             x_expand = x_q_c[:, None, :]
             d_topk = (x_expand - x_t_topk).pow(2).sum(dim=2).sqrt()
@@ -603,21 +599,21 @@ def _knn_distance_per_class_loop_topk_recompute(
             eps = kwargs.get("eps", 1e-8)
             squared = kwargs.get("squared", False)
             normalize_euclid = kwargs.get("normalize_euclid", True)
-
+            
             # Precompute norms and cross-product for top-k
             x_norm_sq = (x_q_c * x_q_c).sum(dim=1)  # (N,)
             y_topk_norm_sq = (y_t_topk * y_t_topk).sum(dim=2)  # (N, k)
-
+            
             # Cross product for top-k
             cross = torch.bmm(x_q_c.unsqueeze(1), y_t_topk.transpose(1, 2)).squeeze(1)  # (N, k)
-
+            
             # Cosine distance
             x_norm = torch.sqrt(x_norm_sq.clamp(min=eps))  # (N,)
             y_topk_norm = torch.sqrt(y_topk_norm_sq.clamp(min=eps))  # (N, k)
             denom = x_norm[:, None] * y_topk_norm  # (N, k)
             cos_sim = (cross / (denom + eps)).clamp(-1.0, 1.0)
             cos_dist = 1.0 - cos_sim
-
+            
             # Euclidean distance
             euclid_sq = x_norm_sq[:, None] + y_topk_norm_sq - 2.0 * cross
             euclid_sq = euclid_sq.clamp(min=0.0)
@@ -625,26 +621,26 @@ def _knn_distance_per_class_loop_topk_recompute(
                 euclid = euclid_sq
             else:
                 euclid = torch.sqrt(euclid_sq + eps)
-
+    
             if normalize_euclid:
                 d = x_q_c.shape[1]
                 scale = torch.sqrt(torch.tensor(d, device=x_q_c.device, dtype=x_q_c.dtype))
                 euclid = euclid / (scale + eps)
-
+            
             d_topk = alpha * euclid + (1.0 - alpha) * cos_dist
         elif metric == "mixed_faiss":
             alpha = kwargs.get("alpha", 0.5)
             eps = kwargs.get("eps", 1e-8)
-
+            
             x_norm = x_q_c / (x_q_c.norm(dim=1, keepdim=True) + eps)
             y_topk_norm = y_t_topk / (y_t_topk.norm(dim=2, keepdim=True) + eps)
-
+            
             sqrt_alpha = torch.sqrt(torch.tensor(alpha, dtype=x_q_c.dtype, device=x_q_c.device))
             sqrt_1ma = torch.sqrt(torch.tensor(1.0 - alpha, dtype=x_q_c.dtype, device=x_q_c.device))
-
+            
             x_mix = torch.cat([sqrt_alpha * x_q_c, sqrt_1ma * x_norm], dim=1)
             y_mix = torch.cat([sqrt_alpha * y_t_topk, sqrt_1ma * y_topk_norm], dim=2)
-
+            
             x_expand = x_mix[:, None, :]
             dist_sq = ((x_expand - y_mix).pow(2).sum(dim=2)).clamp(min=0.0)
             d_topk = torch.sqrt(dist_sq + eps)
@@ -655,20 +651,19 @@ def _knn_distance_per_class_loop_topk_recompute(
             d_topk = torch.sqrt(sq)
         else:
             raise ValueError(f"Unknown metric for top-k recompute: {metric}")
-
+        
         out[q_mask] = d_topk.mean(1)
-
+    
     return out
 
-
 def _mahalanobis_knn_per_class_loop(
-        x_query: torch.Tensor,
-        x_train: torch.Tensor,
-        y_idx_q: torch.Tensor,
-        y_idx_t: torch.Tensor,
-        class_inv_covs: torch.Tensor,
-        k: int,
-        shared: bool = False
+    x_query: torch.Tensor,
+    x_train: torch.Tensor,
+    y_idx_q: torch.Tensor,
+    y_idx_t: torch.Tensor,
+    class_inv_covs: torch.Tensor,
+    k: int,
+    shared: bool = False
 ) -> torch.Tensor:
     """
     Per-class loop variant for Mahalanobis KNN.
@@ -708,19 +703,17 @@ class KNNConfidence(DistanceConfidence):
     K-NN confidence with selectable metric: "euclidean", "cosine", "mixed",
     or a custom callable function.
     """
-
     def __init__(
-            self,
-            k: int = 3,
-            metric: Union[Literal["euclidean", "cosine", "mahalanobis", "mixed", "mixed_faiss"], Callable[
-                [torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
-            dtype: torch.dtype = torch.float16,
-            mixed_alpha: float = 0.5,
-            mixed_squared: bool = False,
-            mixed_normalize_euclid: bool = True,
-            mahalanobis_eps: float = 1e-6,
-            use_topk_recompute: bool = True,  # parameter enabling top-k recompute optimization
-            **kwargs
+        self, 
+        k: int = 3,
+        metric: Union[Literal["euclidean", "cosine","mahalanobis", "mixed", "mixed_faiss"], Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
+        dtype: torch.dtype = torch.float16,
+        mixed_alpha: float = 0.5,
+        mixed_squared: bool = False,
+        mixed_normalize_euclid: bool = True,
+        mahalanobis_eps: float = 1e-6,
+        use_topk_recompute: bool = True,  # parameter enabling top-k recompute optimization
+        **kwargs
     ):
         super().__init__(**kwargs)
         self.k = k
@@ -789,7 +782,7 @@ class KNNConfidence(DistanceConfidence):
                 d = _compute_distance_metric(x, self.train_data, self.metric, **kwargs)
             vals = torch.topk(d, k=self.k, dim=1, largest=False).values
             return vals.mean(1)
-
+        
         # Optimized top-k recompute version
         if self.metric == "euclidean":
             D_topk = _topk_recompute_euclidean(x, self.train_data, self.k)
@@ -797,8 +790,8 @@ class KNNConfidence(DistanceConfidence):
             D_topk = _topk_recompute_cosine(x, self.train_data, self.k)
         elif self.metric == "mixed":
             D_topk = _topk_recompute_mixed(
-                x, self.train_data, self.k,
-                alpha=self.mixed_alpha,
+                x, self.train_data, self.k, 
+                alpha=self.mixed_alpha, 
                 squared=self.mixed_squared,
                 normalize_euclid=self.mixed_normalize_euclid
             )
@@ -813,9 +806,8 @@ class KNNConfidence(DistanceConfidence):
             D_topk = torch.topk(d, k=self.k, dim=1, largest=False).values
         else:
             raise ValueError(f"Unknown metric: {self.metric}")
-
+        
         return D_topk.mean(1)
-
 
 def _knn_distance_per_class_jit(
         x_query: torch.Tensor,
@@ -873,7 +865,6 @@ def _knn_distance_per_class_jit(
 
     return result
 
-
 class PerClassKNNConfidence(DistanceConfidence):
     """
     Per-class K-nearest neighbor confidence using various distance metrics.
@@ -881,21 +872,19 @@ class PerClassKNNConfidence(DistanceConfidence):
       - "masked": (default) compute full distance matrix and mask non-class entries (faster when classes few)
       - "per_class": iterate per class; lower memory when many classes / large dataset
     """
-
     def __init__(
-            self,
-            k: int = 3,
-            metric: Union[Literal["euclidean", "cosine", "mixed", "mahalanobis", "mixed_faiss"], Callable[
-                [torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
-            mahalanobis_eps: float = 1e-6,
-            shared_covariance: bool = False,
-            computation_mode: Literal["masked", "per_class"] = "masked",
-            dtype: torch.dtype = torch.float16,
-            mixed_alpha: float = 0.0,
-            mixed_squared: bool = False,
-            mixed_normalize_euclid: bool = True,
-            use_topk_recompute: bool = True,  # parameter enabling top-k recompute optimization
-            **kwargs
+        self,
+        k: int = 3,
+        metric: Union[Literal["euclidean", "cosine", "mixed", "mahalanobis", "mixed_faiss"], Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
+        mahalanobis_eps: float = 1e-6,
+        shared_covariance: bool = False,
+        computation_mode: Literal["masked", "per_class"] = "masked",
+        dtype: torch.dtype = torch.float16,
+        mixed_alpha: float = 0.0,
+        mixed_squared: bool = False,
+        mixed_normalize_euclid: bool = True,
+        use_topk_recompute: bool = True,  # parameter enabling top-k recompute optimization
+        **kwargs
     ):
         super().__init__(**kwargs)
         self.k = k
@@ -911,6 +900,7 @@ class PerClassKNNConfidence(DistanceConfidence):
 
         if computation_mode not in ("masked", "per_class"):
             raise ValueError("computation_mode must be 'masked', 'per_class',")
+
 
     @property
     def dtype(self) -> torch.dtype:
@@ -943,8 +933,7 @@ class PerClassKNNConfidence(DistanceConfidence):
             self.register_buffer("class_means", class_means)
             if self.shared_covariance:
                 # Use a single shared inverse covariance
-                _, shared_inv_cov = _compute_global_mean_inv_cov(x_fit - self.class_means[self._train_labels],
-                                                                 self.mahalanobis_eps)
+                _,shared_inv_cov = _compute_global_mean_inv_cov(x_fit - self.class_means[self._train_labels], self.mahalanobis_eps)
                 self.register_buffer("shared_inv_cov", shared_inv_cov)
             else:
                 self.register_buffer("class_inv_covs", inv_covs)
@@ -965,7 +954,7 @@ class PerClassKNNConfidence(DistanceConfidence):
             raise NotImplementedError("Per-class KNN requires labels y to compute distances.")
 
         y_idx = torch.searchsorted(self._labels_unique, y)
-        # check that none are not found
+        #check that none are not found
         if (y_idx >= len(self._labels_unique)).any():
             raise ValueError("Some labels in y are not found in the training labels.")
 
@@ -993,14 +982,14 @@ class PerClassKNNConfidence(DistanceConfidence):
                 kwargs = {
                     "alpha": self.mixed_alpha,
                 }
-
+            
             if self.use_topk_recompute:
                 # Top-k recompute versions
                 if self.computation_mode == "masked":
                     dist = _knn_distance_per_class_vectorized_topk_recompute(
                         x, self.train_data, y_idx, self._train_labels, self.k,
                         metric=self.metric, **kwargs)
-                else:  # per_class
+                else: # per_class
                     dist = _knn_distance_per_class_loop_topk_recompute(
                         x, self.train_data, y_idx, self._train_labels, self.k,
                         metric=self.metric, **kwargs)
@@ -1009,7 +998,7 @@ class PerClassKNNConfidence(DistanceConfidence):
                     dist = _knn_distance_per_class_vectorized(
                         x, self.train_data, y_idx, self._train_labels, self.k,
                         metric=self.metric, **kwargs)
-                else:  # per_class
+                else: # per_class
                     dist = _knn_distance_per_class_loop(
                         x, self.train_data, y_idx, self._train_labels, self.k,
                         metric=self.metric, **kwargs)
@@ -1017,31 +1006,29 @@ class PerClassKNNConfidence(DistanceConfidence):
         return dist
 
 
+
+
+
+
+
 if __name__ == "__main__":
-    skip_test = True
+    skip_test=True
     if not skip_test:
         torch.manual_seed(0)
         np.random.seed(0)
-        N_per = 50;
-        D = 2
-        mu0 = np.array([0., 0.]);
-        cov0 = np.eye(2) * 0.5
-        mu1 = np.array([5., 5.]);
-        cov1 = np.eye(2) * 0.5
-        data0 = np.random.multivariate_normal(mu0, cov0, N_per)
-        data1 = np.random.multivariate_normal(mu1, cov1, N_per)
-        X = np.vstack([data0, data1]);
-        y = np.hstack([np.zeros(N_per), np.ones(N_per)])
-        X_t = torch.from_numpy(X).float();
-        y_t = torch.from_numpy(y).long()
-        X_test = torch.tensor([[0.1, -0.2], [4.8, 5.2], [2.5, 2.5]])
-        y_test = torch.tensor([0, 1, 0])
-
+        N_per = 50; D = 2
+        mu0 = np.array([0.,0.]); cov0 = np.eye(2)*0.5
+        mu1 = np.array([5.,5.]); cov1 = np.eye(2)*0.5
+        data0 = np.random.multivariate_normal(mu0,cov0,N_per)
+        data1 = np.random.multivariate_normal(mu1,cov1,N_per)
+        X = np.vstack([data0,data1]); y = np.hstack([np.zeros(N_per), np.ones(N_per)])
+        X_t = torch.from_numpy(X).float(); y_t = torch.from_numpy(y).long()
+        X_test = torch.tensor([[0.1,-0.2],[4.8,5.2],[2.5,2.5]])
+        y_test = torch.tensor([0,1,0])
 
         # Custom distance function example - Manhattan distance
         def manhattan_distance(x, y):
             return torch.cdist(x, y, p=1)
-
 
         # Test the distance-based confidence classes
         for name, cls in [
@@ -1061,8 +1048,7 @@ if __name__ == "__main__":
 
         # Test the new Triton-accelerated variants
         triton_tests = [
-            ("Per-Class KNN Triton Euclidean",
-             PerClassKNNConfidence(k=3, metric="euclidean", computation_mode="triton")),
+            ("Per-Class KNN Triton Euclidean", PerClassKNNConfidence(k=3, metric="euclidean", computation_mode="triton")),
             ("Per-Class KNN Triton Cosine", PerClassKNNConfidence(k=3, metric="cosine", computation_mode="triton")),
         ]
 
@@ -1084,8 +1070,7 @@ if __name__ == "__main__":
             half_tests = [
                 ("KNN Euclidean FP16", KNNConfidence(k=3, metric="euclidean", dtype=torch.half)),
                 ("Per-Class KNN Euclidean FP16", PerClassKNNConfidence(k=3, metric="euclidean", dtype=torch.half)),
-                ("Per-Class KNN Triton FP16",
-                 PerClassKNNConfidence(k=3, metric="euclidean", computation_mode="triton", dtype=torch.half)),
+                ("Per-Class KNN Triton FP16", PerClassKNNConfidence(k=3, metric="euclidean", computation_mode="triton", dtype=torch.half)),
                 ("Per-Class KNN Mahalanobis FP16", PerClassKNNConfidence(k=3, metric="mahalanobis", dtype=torch.half)),
             ]
             for name, cls in half_tests:
@@ -1123,11 +1108,11 @@ if __name__ == "__main__":
             conf = mdl.forward(X_batches[i], y_batches[i])
         torch.cuda.synchronize()
         t1 = time.time()
-        print(f"Processed {n_batches} batches of {N_batch}x{D} against {N_db}x{D} DB in {t1 - t0:.3f} seconds")
-        print(f"Avg time per batch: {(t1 - t0) / n_batches:.3f} seconds")
+        print(f"Processed {n_batches} batches of {N_batch}x{D} against {N_db}x{D} DB in {t1-t0:.3f} seconds")
+        print(f"Avg time per batch: {(t1-t0)/n_batches:.3f} seconds")
         print("Sample confidences:", conf[:5].cpu())
 
-        # speed test for top-k recompute vs original with backward to input
+        #speed test for top-k recompute vs original with backward to input
         if torch.cuda.is_available():
             print("\n==== CUDA Speed Test: Top-K Recompute vs Original with Backward ====")
             N_db = 20000
@@ -1176,77 +1161,78 @@ if __name__ == "__main__":
             t1 = time.time()
             print(f"Top-K Recompute time (forward + backward): {t1 - t0:.3f} seconds")
 
+
     # Add gradient verification tests
     if torch.cuda.is_available():
-        print("\n" + "=" * 80)
+        print("\n" + "="*80)
         print("=== TOP-K RECOMPUTE GRADIENT VERIFICATION ===")
-        print("=" * 80)
-
+        print("="*80)
+        
         torch.manual_seed(42)
         N_db = 1000
         D = 128
         N_batch = 32
         k_test = 5
-
+        
         X_db = torch.randn(N_db, D, device="cuda", dtype=torch.float32)
         y_db = torch.randint(0, 10, (N_db,), device="cuda")
         X_test = torch.randn(N_batch, D, device="cuda", dtype=torch.float32)
         y_test = torch.randint(0, 10, (N_batch,), device="cuda")
-
+        
         metrics_to_test = ["euclidean", "cosine", "mixed", "mixed_faiss"]
-
+        
         for metric in metrics_to_test:
-            print(f"\n{'=' * 60}")
+            print(f"\n{'='*60}")
             print(f"Testing metric: {metric}")
-            print(f"{'=' * 60}")
-
+            print(f"{'='*60}")
+            
             # Test KNNConfidence
             print(f"\n--- KNNConfidence ({metric}) ---")
-
+            
             # Original version
             X_test_orig = X_test.clone().detach().requires_grad_(True)
-            knn_orig = KNNConfidence(k=k_test, metric=metric, dtype=torch.float32,
-                                     use_topk_recompute=False, mixed_alpha=0.4).to("cuda")
+            knn_orig = KNNConfidence(k=k_test, metric=metric, dtype=torch.float32, 
+                                    use_topk_recompute=False, mixed_alpha=0.4).to("cuda")
             knn_orig.fit(X_db, y_db)
             conf_orig = knn_orig.forward(X_test_orig, y_test)
             loss_orig = conf_orig.sum()
             loss_orig.backward()
             grad_orig = X_test_orig.grad.clone()
-
+            
             # Optimized version
             X_test_opt = X_test.clone().detach().requires_grad_(True)
-            knn_opt = KNNConfidence(k=k_test, metric=metric, dtype=torch.float32,
-                                    use_topk_recompute=True, mixed_alpha=0.4).to("cuda")
+            knn_opt = KNNConfidence(k=k_test, metric=metric, dtype=torch.float32, 
+                                   use_topk_recompute=True, mixed_alpha=0.4).to("cuda")
             knn_opt.fit(X_db, y_db)
             conf_opt = knn_opt.forward(X_test_opt, y_test)
             loss_opt = conf_opt.sum()
             loss_opt.backward()
             grad_opt = X_test_opt.grad.clone()
-
+            
             # Compare
             conf_diff = (conf_orig - conf_opt).abs().max().item()
             grad_diff = (grad_orig - grad_opt).abs().max().item()
             grad_rel_diff = (grad_diff / (grad_orig.abs().mean().item() + 1e-8))
-
+            
             print(f"  Confidence diff: {conf_diff:.2e}")
             print(f"  Gradient abs diff: {grad_diff:.2e}")
             print(f"  Gradient rel diff: {grad_rel_diff:.2e}")
             print(f"  Gradient norm (orig): {grad_orig.norm().item():.6f}")
             print(f"  Gradient norm (opt):  {grad_opt.norm().item():.6f}")
-
+            
             assert conf_diff < 1e-4, f"Confidence mismatch for {metric}: {conf_diff}"
             assert grad_diff < 1e-3, f"Gradient mismatch for {metric}: {grad_diff}"
             print(f"  ✓ Gradients match!")
-
+            
             # Test PerClassKNNConfidence with different computation modes
             for comp_mode in ["masked", "per_class"]:
                 print(f"\n--- PerClassKNNConfidence ({metric}, {comp_mode}) ---")
-
+                
                 # Original version
                 X_test_orig = X_test.clone().detach().requires_grad_(True)
                 pc_knn_orig = PerClassKNNConfidence(
-                    k=k_test, metric=metric, dtype=torch.float32,
-                    computation_mode=comp_mode, use_topk_recompute=False,
+                    k=k_test, metric=metric, dtype=torch.float32, 
+                    computation_mode=comp_mode, use_topk_recompute=False, 
                     mixed_alpha=0.4
                 ).to("cuda")
                 pc_knn_orig.fit(X_db, y_db)
@@ -1254,12 +1240,12 @@ if __name__ == "__main__":
                 loss_orig = conf_orig.sum()
                 loss_orig.backward()
                 grad_orig = X_test_orig.grad.clone()
-
+                
                 # Optimized version
                 X_test_opt = X_test.clone().detach().requires_grad_(True)
                 pc_knn_opt = PerClassKNNConfidence(
-                    k=k_test, metric=metric, dtype=torch.float32,
-                    computation_mode=comp_mode, use_topk_recompute=True,
+                    k=k_test, metric=metric, dtype=torch.float32, 
+                    computation_mode=comp_mode, use_topk_recompute=True, 
                     mixed_alpha=0.4
                 ).to("cuda")
                 pc_knn_opt.fit(X_db, y_db)
@@ -1267,22 +1253,22 @@ if __name__ == "__main__":
                 loss_opt = conf_opt.sum()
                 loss_opt.backward()
                 grad_opt = X_test_opt.grad.clone()
-
+                
                 # Compare
                 conf_diff = (conf_orig - conf_opt).abs().max().item()
                 grad_diff = (grad_orig - grad_opt).abs().max().item()
                 grad_rel_diff = (grad_diff / (grad_orig.abs().mean().item() + 1e-8))
-
+                
                 print(f"  Confidence diff: {conf_diff:.2e}")
                 print(f"  Gradient abs diff: {grad_diff:.2e}")
                 print(f"  Gradient rel diff: {grad_rel_diff:.2e}")
                 print(f"  Gradient norm (orig): {grad_orig.norm().item():.6f}")
                 print(f"  Gradient norm (opt):  {grad_opt.norm().item():.6f}")
-
+                
                 assert conf_diff < 1e-4, f"Confidence mismatch for {metric} {comp_mode}: {conf_diff}"
                 assert grad_diff < 1e-3, f"Gradient mismatch for {metric} {comp_mode}: {grad_diff}"
                 print(f"Gradients match!")
-
-        print("\n" + "=" * 80)
+        
+        print("\n" + "="*80)
         print("=== ALL GRADIENT TESTS PASSED ===")
-        print("=" * 80)
+        print("="*80)

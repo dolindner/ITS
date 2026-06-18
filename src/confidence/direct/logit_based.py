@@ -79,7 +79,6 @@ class CombinedEnergyMultiSampleConfidence(ConfidenceModule):
       - Computes mean logits across samples -> passes mean logits to EnergyConfidence.
       - Returns: alpha * energy_conf + (1-alpha) * multi_sample_conf
     """
-
     def __init__(self, multi_sample_confidence: ConfidenceModule, alpha: float = 0.5, energy_t: float = 1.0):
         super().__init__()
         self.multi_sample_confidence = multi_sample_confidence
@@ -96,8 +95,7 @@ class CombinedEnergyMultiSampleConfidence(ConfidenceModule):
             Combined confidence scores.
         """
         if mc_logits.dim() < 3:
-            raise ValueError(
-                "Expected MC logits with shape [batch, samples, classes], got shape: " + str(mc_logits.shape))
+            raise ValueError("Expected MC logits with shape [batch, samples, classes], got shape: " + str(mc_logits.shape))
 
         # compute per-sample probabilities for the multi-sample criterion
         multi_sample_conf = self.multi_sample_confidence(mc_logits, y)

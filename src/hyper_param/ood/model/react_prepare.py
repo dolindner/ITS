@@ -1,10 +1,8 @@
 from typing import Dict, Any
-
 import optuna
+import torch
 
 from confidence.direct.logit_based import EnergyConfidence
-from confidence.direct.prob_based import EntropyConfidence
-from confidence.model.ash import ReActConfidence
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
@@ -14,37 +12,37 @@ from model.basic_networks import find_last_linear_layer
 from model.get_model import get_network_layer
 from src.utils.transformation_problem import TransformationProblem
 
+from confidence.model.ash import ReActConfidence
+from confidence.direct.prob_based import EntropyConfidence
 
 def default_react_params() -> Dict[str, Any]:
     """Default parameters for ReAct. The percentile of 0.9 is from the paper."""
     return {
         "percentile": 0.9,
-        "layer_index": 0,  # Fixed to penultimate layer
+        "layer_index": 0, # Fixed to penultimate layer
         "index_logits": None,
         "confidence_type": "energy",
         "use_feature_confidence": False,
     }
 
-
 def sample_react_params(trial: optuna.Trial, train_cache=None, architecture=None, **kwargs) -> Dict[str, Any]:
     """Sample hyperparameters for ReAct."""
     return {
         "percentile": trial.suggest_float("percentile", 0.5, 0.9999999),
-        "layer_index": 0,  # Fixed to penultimate layer
+        "layer_index": 0, # Fixed to penultimate layer
         "index_logits": None,
         "confidence_type": trial.suggest_categorical("confidence_type", ["energy", "entropy"]),
         "use_feature_confidence": False,
     }
 
-
 def create_react_problem(
-        params: Dict[str, Any],
-        model,
-        train_cache,
-        transform_seq,
-        dataset_info,
-        architecture,
-        **kwargs
+    params: Dict[str, Any],
+    model,
+    train_cache,
+    transform_seq,
+    dataset_info,
+    architecture,
+    **kwargs
 ) -> TransformationProblem:
     """
     Build and return a TransformationProblem that wraps backbone+head with ReActConfidence.
@@ -59,7 +57,7 @@ def create_react_problem(
     # 1. Get layer object and create a dual-output model that returns (final_output, layer_features)
     layer_obj, layer_io = get_network_layer(dataset_info, architecture, layer_index)
     dual_output_model = train_cache.make_wrapper(layer_obj, capture_modes=layer_io, concat=False, flatten=True)
-
+    
     # Extract the head (last linear layer) from the original model
     head = find_last_linear_layer(model)
 

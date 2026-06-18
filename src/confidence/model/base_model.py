@@ -20,7 +20,7 @@ class ModelBasedConfidence(torch.nn.Module, abc.ABC):
                 If None, use the whole output.
         """
         super(ModelBasedConfidence, self).__init__()
-        self.model = model  # this is a classifier model that outputs logits
+        self.model = model #this is a classifier model that outputs logits
         self.confidence = confidence
         self.index = index
 

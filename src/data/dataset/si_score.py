@@ -1,17 +1,24 @@
-from datasets import load_dataset
-import json
 import os
-import statistics
+import json
 import urllib.request
-from pathlib import Path
-from typing import Optional, Callable, Tuple, List
-
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import transforms, models
+
+from typing import Optional, Callable, Tuple, List
+from pathlib import Path
+from torch.utils.data import Dataset
 from torchvision import models
-from torchvision import transforms
+
+
+
 from tqdm import tqdm
+from PIL import Image
+import statistics
+import torch
+import os
+
 
 
 class SIScoreDataset(Dataset):
@@ -68,6 +75,8 @@ class SIScoreDataset(Dataset):
         if self.transform:
             img = self.transform(img)
         return img, label
+
+
 
 
 def download_imagenet_subset(save_dir: str, min_images: int = 50, max_images: int = 100):

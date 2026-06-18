@@ -1,12 +1,9 @@
-from typing import Optional
-
 import torch
-
+from typing import Optional, Union
+from confidence.base_confidence import ConfidenceModule
 from confidence.input_transform import InputTransform
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
-
-
-# todo maybe include alpha preprocessing as in the original paper
+#todo maybe include alpha preprocessing as in the original paper
 
 class TrustScoreTorchConfidence(ClassicConfidenceBase):
     """
@@ -15,15 +12,14 @@ class TrustScoreTorchConfidence(ClassicConfidenceBase):
     Requires the predicted class to be passed. If this is not done. We predict using the nearest class.
     Supports 'euclidean' or 'cosine' distance.
     """
-
     def __init__(
-            self,
-            k_neighbors: int = 5,
-            k_distance: Optional[int] = None,
-            eps: float = 1e-10,
-            input_transform: Optional[InputTransform] = None,
-            alpha: float = 0.0,
-            distance: str = "euclidean"
+        self,
+        k_neighbors: int = 5,
+        k_distance: Optional[int] = None,
+        eps: float = 1e-10,
+        input_transform: Optional[InputTransform] = None,
+        alpha: float = 0.0,
+        distance: str = "euclidean"
     ):
         super().__init__(input_transform=input_transform)
         self.k = k_neighbors
@@ -69,6 +65,7 @@ class TrustScoreTorchConfidence(ClassicConfidenceBase):
         """
         # Move to device and transform if needed
 
+        # TODO check again if this matches offically implementation.
         if self.alpha > 0:
             X_hd_list = []
             y_hd_list = []
@@ -129,8 +126,8 @@ class TrustScoreTorchConfidence(ClassicConfidenceBase):
         # predict class via k-NN if y is None
         d_knn, idx_knn = torch.topk(d_xt, self.k, largest=False)
         if y is None:
-            neigh_labels = self.y_train[idx_knn]  # (B, k)
-            y_pred = torch.mode(neigh_labels, dim=1).values  # (B,)
+            neigh_labels = self.y_train[idx_knn]               # (B, k)
+            y_pred = torch.mode(neigh_labels, dim=1).values    # (B,)
         else:
             y_pred = y.long()
 

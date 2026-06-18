@@ -1,10 +1,13 @@
 import math
 
+import torch
 import torch.nn as nn
-from escnn import gspaces
 from escnn import nn as escnn_nn
+from escnn import gspaces
 
-from .basic_networks import FlexibleResNet, ESCNNFlexibleResNet, ToGeometric, get_flexible_resnet_layer_mapping
+from .basic_networks import FlexibleResNet, ESCNNFlexibleResNet, ToGeometric, FromGeometric, get_flexible_resnet_layer_mapping
+
+
 
 
 def make_simple_cnn_mnist(num_classes=10, activation=nn.ReLU):
@@ -20,8 +23,6 @@ def make_simple_cnn_mnist(num_classes=10, activation=nn.ReLU):
         activation(),
         nn.Linear(128, num_classes)
     )
-
-
 def make_equivariant_simple_cnn_mnist(num_classes=10, num_rotations=8, activation=escnn_nn.ReLU):
     r2_act = gspaces.rot2dOnR2(N=num_rotations)
     in_type = escnn_nn.FieldType(r2_act, [r2_act.trivial_repr])
@@ -49,15 +50,12 @@ def make_equivariant_simple_cnn_mnist(num_classes=10, num_rotations=8, activatio
                 nn.ReLU(),
                 nn.Linear(128, num_classes)
             )
-
         def forward(self, x):
             x = self.to_geo(x)
-            x = self.eq(x)  # GeometricTensor after group pooling
-            x = x.tensor  # ordinary tensor (B, 64, 7, 7)
+            x = self.eq(x)        # GeometricTensor after group pooling
+            x = x.tensor          # ordinary tensor (B, 64, 7, 7)
             return self.post(x)
-
     return Model()
-
 
 def make_deep_cnn_mnist(num_classes=10, activation=nn.GELU):
     return nn.Sequential(
@@ -80,57 +78,49 @@ def make_deep_cnn_mnist(num_classes=10, activation=nn.GELU):
         nn.Linear(128, num_classes)
     )
 
-
 def ResNet44(num_classes=10, activation=nn.GELU):
     channels = [16, 32, 64]
     return FlexibleResNet(channels, 7, num_classes=num_classes, in_channels=1, activation=activation)
 
-
 def ResNetSmall(num_classes=10, activation=nn.GELU):
     return FlexibleResNet([32, 64, 128], 1, num_classes=num_classes, in_channels=1, activation=activation)
 
-
 def ResNetSmall2(num_classes=10, activation=nn.GELU):
-    return FlexibleResNet([64, 128, 256, 512], 1, num_classes=num_classes, in_channels=1, activation=activation,
-                          stem_stride=1)
+    return FlexibleResNet([64, 128, 256,512], 1, num_classes=num_classes, in_channels=1, activation=activation, stem_stride=1)
+
+
 
 
 def ResNetMedium(num_classes=10, activation=nn.GELU):
     return FlexibleResNet([32, 64, 128], 2, num_classes=num_classes, in_channels=1, activation=activation)
 
-
 def EquivariantResNet44(num_classes=10, act_cls=escnn_nn.ReLU, num_rotations=8):
     return ESCNNFlexibleResNet([16, 32, 64], 7, num_classes=num_classes, in_channels=1,
                                act_cls=act_cls, rotations=num_rotations)
 
-
 def EquivariantResNetSmall(num_classes=10, act_cls=escnn_nn.ReLU, num_rotations=8):
     sizes = [32, 64, 128]
-    # multiply by root num_rotations
-    sizes = [math.ceil(1.2 * s / (num_rotations ** 0.5)) for s in sizes]
+    #multiply by root num_rotations
+    sizes = [math.ceil(1.2 *s / (num_rotations ** 0.5)) for s in sizes]
 
     return ESCNNFlexibleResNet(sizes, 1, num_classes=num_classes, in_channels=1,
                                act_cls=act_cls, rotations=num_rotations)
 
-
 def EquivariantResNetMedium(num_classes=10, act_cls=escnn_nn.ReLU, num_rotations=8):
     sizes = [32, 64, 128]
-    # multiply by root num_rotations
-    sizes = [math.ceil(1.2 * s / (num_rotations ** 0.5)) for s in sizes]
+    #multiply by root num_rotations
+    sizes = [math.ceil(1.2 *s / (num_rotations ** 0.5)) for s in sizes]
     return ESCNNFlexibleResNet(sizes, 2, num_classes=num_classes, in_channels=1,
                                act_cls=act_cls, rotations=num_rotations)
 
-
 def _scale_channels_list(channels, divisor):
     return [max(8, math.ceil(c / divisor)) for c in channels]
-
 
 def ResNetSmall_scaled(num_classes=10, activation=nn.GELU, divisor=1):
     base = [64, 128, 256, 512]
     if divisor != 1:
         base = _scale_channels_list(base, divisor)
     return FlexibleResNet(base, 1, num_classes=num_classes, in_channels=1, activation=activation, stem_stride=1)
-
 
 def get_mnist_architectures():
     return [
@@ -152,7 +142,6 @@ def get_mnist_architectures():
         "resnet_small_half",
         "resnet_small_quarter",
     ]
-
 
 def get_mnist_network(architecture, num_classes=10, num_rotations=8):
     """
@@ -185,13 +174,12 @@ def get_mnist_network(architecture, num_classes=10, num_rotations=8):
         return EquivariantResNetMedium(num_classes=num_classes, num_rotations=num_rotations)
     raise ValueError(f"Unknown MNIST architecture: {architecture}")
 
-
 def get_mnist_network_layer(architecture, index, num_classes=10, num_rotations=8):
     """
     Returns (layer_name, capture_mode) for FlexibleResNet architectures.
     """
     a = architecture.lower()
-
+    
     # Define block configurations for each FlexibleResNet architecture
     if a == "resnet44":
         blocks_per_stage = 7  # uniform blocks, 3 stages
@@ -201,5 +189,5 @@ def get_mnist_network_layer(architecture, index, num_classes=10, num_rotations=8
         blocks_per_stage = 1  # this variant uses 4 stages (ResNetSmall2)
         mapping = get_flexible_resnet_layer_mapping(blocks_per_stage, stages=4)
         return mapping[index]
-
+    
     raise ValueError(f"Layer mapping not implemented for MNIST architecture: {architecture}")

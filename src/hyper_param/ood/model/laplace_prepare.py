@@ -1,33 +1,33 @@
 from typing import Dict, Any, Optional
-
 import optuna
 import torch
 
 from confidence.direct.logit_based import EnergyConfidence, CombinedEnergyMultiSampleConfidence
-from confidence.direct.multi_samples import MutualInformationCriterion
-from confidence.direct.prob_based import MaximumSoftmaxConfidence, CombinedEntropyMultiSampleConfidence, \
-    EntropyConfidence
 from confidence.model.laplace_conf import LaplaceModelSamplingConfidence
-from embedding_cache import LayerEmbeddingCache
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
     OOD_PROBLEM_FACTORIES,
 )
 from src.utils.transformation_problem import TransformationProblem
+from embedding_cache import LayerEmbeddingCache
+
+from confidence.direct.multi_samples import MutualInformationCriterion
+from confidence.direct.prob_based import MaximumSoftmaxConfidence, CombinedEntropyMultiSampleConfidence, \
+    EntropyConfidence
 
 
 def prepare_laplace_methods(
-        model: torch.nn.Module,
-        transform_seq,
-        dataset_info,
-        architecture: str,
-        train_cache: Optional[LayerEmbeddingCache] = None,
-        criterion: str = "prob",
-        device: torch.device = None,
-        mode: str = None,  # This is the Laplace fit method, not link_approx
-        precision: float = None,  # Only used if mode is "None"
-        **kwargs,
+    model: torch.nn.Module,
+    transform_seq,
+    dataset_info,
+    architecture: str,
+    train_cache: Optional[LayerEmbeddingCache] = None,
+    criterion: str = "prob",
+    device: torch.device = None,
+    mode: str = None,         # This is the Laplace fit method, not link_approx
+    precision: float = None,  # Only used if mode is "None"
+    **kwargs,
 ) -> Dict[str, TransformationProblem]:
     """
     Build Laplace problems for different criteria.
@@ -45,6 +45,7 @@ def prepare_laplace_methods(
         "kwargs_opt_prior": None,
         "prior_precision": prior_precision,
     }
+
 
     if crit_name == "prob":
         pred_type = kwargs.get("pred_type", "glm")
@@ -141,16 +142,13 @@ def prepare_laplace_methods(
             pass
 
     problem_name = f"laplace_{crit_name}"
-    problems = {
-        problem_name: TransformationProblem(laplace_model, transform_seq, consolidate_method="consolidate_simple")}
+    problems = {problem_name: TransformationProblem(laplace_model, transform_seq, consolidate_method="consolidate_simple")}
     return problems
-
 
 # --- Laplace Factories ---
 
 def _create_laplace_problem_factory(criterion_name: str):
-    def create_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
-                       **kwargs) -> TransformationProblem:
+    def create_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
         problems = prepare_laplace_methods(
             model=model,
             transform_seq=transform_seq,
@@ -160,9 +158,7 @@ def _create_laplace_problem_factory(criterion_name: str):
             **kwargs
         )
         return problems[f"laplace_{criterion_name}"]
-
     return create_problem
-
 
 def _create_laplace_param_factory(criterion_name: str, sample_prob_params: bool = False):
     def default_params() -> Dict[str, Any]:
@@ -178,19 +174,18 @@ def _create_laplace_param_factory(criterion_name: str, sample_prob_params: bool 
             params["combine_with"] = "energy"
             params["alpha"] = 0.5
         return params
-
     return default_params
 
-
 def _create_laplace_sampler_factory(criterion_name: str, sample_prob_params: bool = False):
-    def sample_params(trial: optuna.Trial, **kwargs) -> Dict[str, Any]:
+    def sample_params(trial: optuna.Trial,**kwargs) -> Dict[str, Any]:
         params = {"criterion": criterion_name}
         if sample_prob_params:
             params["pred_type"] = trial.suggest_categorical("pred_type", ["glm", "nn"])
             if params["pred_type"] == "glm":
                 params["link_approx"] = trial.suggest_categorical("link_approx", ["probit", "bridge", "bridge_norm"])
 
-        params["mode"] = trial.suggest_categorical("mode", ["marglik", "none", ])
+
+        params["mode"] = trial.suggest_categorical("mode", ["marglik", "none",])
         if params["mode"] == "none":
             params["precision"] = trial.suggest_float("precision", 1e-2, 1e3, log=True)
         if criterion_name == "entropy_plus_mi":
@@ -200,9 +195,7 @@ def _create_laplace_sampler_factory(criterion_name: str, sample_prob_params: boo
             params["combine_with"] = trial.suggest_categorical("combine_with", ["energy", "entropy"])
             params["alpha"] = trial.suggest_float("alpha", 0.0, 1.0)
         return params
-
     return sample_params
-
 
 # --- Registration for each criterion ---
 
@@ -211,7 +204,8 @@ OOD_DEFAULT_PARAM_FACTORIES["laplace_prob"] = _create_laplace_param_factory("pro
 OOD_PARAM_SAMPLERS["laplace_prob"] = _create_laplace_sampler_factory("prob", sample_prob_params=True)
 OOD_PROBLEM_FACTORIES["laplace_prob"] = _create_laplace_problem_factory("prob")
 
-for crit in ["energy", "mutual_information", "entropy_plus_mi", "entropy", "weighted"]:
+
+for crit in ["energy", "mutual_information", "entropy_plus_mi","entropy", "weighted"]:
     name = f"laplace_{crit}"
     OOD_DEFAULT_PARAM_FACTORIES[name] = _create_laplace_param_factory(crit)
     OOD_PARAM_SAMPLERS[name] = _create_laplace_sampler_factory(crit)
@@ -223,9 +217,9 @@ OOD_PARAM_SAMPLERS["laplace_mi"] = _create_laplace_sampler_factory("mutual_infor
 OOD_PROBLEM_FACTORIES["laplace_mi"] = _create_laplace_problem_factory("mutual_information")
 
 
+
 def default_laplace_best_criterion_params() -> Dict[str, Any]:
     return {"criterion": "prob", "pred_type": "glm", "link_approx": "probit"}
-
 
 def sample_laplace_best_criterion_params(trial: optuna.Trial) -> Dict[str, Any]:
     criterion = trial.suggest_categorical("criterion", ["prob", "energy", "mutual_information"])
@@ -236,9 +230,7 @@ def sample_laplace_best_criterion_params(trial: optuna.Trial) -> Dict[str, Any]:
             params["link_approx"] = trial.suggest_categorical("link_approx", ["probit", "bridge", "bridge_norm"])
     return params
 
-
-def create_laplace_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture,
-                                          **kwargs) -> TransformationProblem:
+def create_laplace_best_criterion_problem(params: Dict[str, Any], model, transform_seq, dataset_info, architecture, **kwargs) -> TransformationProblem:
     problems = prepare_laplace_methods(
         model=model,
         transform_seq=transform_seq,
@@ -248,15 +240,13 @@ def create_laplace_best_criterion_problem(params: Dict[str, Any], model, transfo
         **kwargs
     )
     return problems[f"laplace_{params['criterion']}"]
-
-
-# this can choose from multiple criterions
+#this can choose from multiple criterions
 OOD_DEFAULT_PARAM_FACTORIES["laplace_best_criterion"] = default_laplace_best_criterion_params
 OOD_PARAM_SAMPLERS["laplace_best_criterion"] = sample_laplace_best_criterion_params
 OOD_PROBLEM_FACTORIES["laplace_best_criterion"] = create_laplace_best_criterion_problem
 
 #
 OOD_DEFAULT_PARAM_FACTORIES["laplace_entropy_gridsearch"] = lambda: {"criterion": "entropy", "mode": "gridsearch"}
-OOD_PARAM_SAMPLERS["laplace_entropy_gridsearch"] = lambda trial, **kwargs: {"criterion": "entropy",
-                                                                            "mode": "gridsearch"}
+OOD_PARAM_SAMPLERS["laplace_entropy_gridsearch"] = lambda trial, **kwargs: {"criterion": "entropy", "mode": "gridsearch"}
 OOD_PROBLEM_FACTORIES["laplace_entropy_gridsearch"] = _create_laplace_problem_factory("entropy")
+

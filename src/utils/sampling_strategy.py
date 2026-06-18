@@ -1,19 +1,18 @@
-from typing import Tuple, Literal
-
+import pytorch_lightning as pl
+from typing import Optional, List, Tuple, Literal
 import torch
 from torch import nn
-
 
 class TransformLatentSamplingStrategy:
 
     def __init__(
-            self,
-            transform_sequence,
-            feature_extractor: nn.Module = nn.Identity(),
-            neg_margin: float = 0.0,  # deprecated
-            index=None,
-            clip_data: bool = False,
-            mode: Literal["default", "double", "double_resampled"] = "default",
+        self,
+        transform_sequence,
+        feature_extractor: nn.Module=nn.Identity(),
+        neg_margin: float = 0.0, #deprecated
+        index=None,
+        clip_data: bool = False,
+        mode: Literal["default", "double", "double_resampled"] = "default",
 
     ):
         """
@@ -38,10 +37,10 @@ class TransformLatentSamplingStrategy:
         self.clip_data = clip_data
         self.mode = mode
 
-    def sample(self, X_pos: torch.Tensor, seed=None) -> torch.Tensor:
-        return self.sample_and_params(X_pos, seed=seed)[0]
+    def sample(self, X_pos: torch.Tensor,seed=None) -> torch.Tensor:
+        return self.sample_and_params(X_pos,seed=seed)[0]
 
-    def sample_and_params(self, X_pos: torch.Tensor, seed=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def sample_and_params(self, X_pos: torch.Tensor,seed=None) -> Tuple[torch.Tensor, torch.Tensor]:
         if seed is not None:
             cpu_state = torch.get_rng_state()
             cuda_state = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
@@ -54,6 +53,7 @@ class TransformLatentSamplingStrategy:
 
         params1 = self.transform_sequence.initial_param(batch_size)
         T1 = self.transform_sequence(params1)
+
 
         if self.mode == "double":
             # second transform
@@ -74,11 +74,13 @@ class TransformLatentSamplingStrategy:
                 if torch.cuda.is_available():
                     torch.cuda.set_rng_state_all(cuda_state)
 
+
             return X_out, T_combined
 
         elif self.mode == "double_resampled":
             # Apply first transform
             X1 = self.transform_sequence.application_method(X_pos, T1)
+
 
             # --- Second transform, resampled ---
             params2 = self.transform_sequence.initial_param(batch_size)
@@ -100,8 +102,10 @@ class TransformLatentSamplingStrategy:
 
             return X2, T_combined
 
+
         # Apply first transform
         X1 = self.transform_sequence.application_method(X_pos, T1)
+
 
         X_trans = X1
         T = T1
@@ -115,7 +119,7 @@ class TransformLatentSamplingStrategy:
                 torch.cuda.set_rng_state_all(cuda_state)
         return X_trans, T
 
-    def get_identity_transform(self, batch_size) -> torch.Tensor:
+    def get_identity_transform(self,batch_size) -> torch.Tensor:
         """
         Generates identity transformation matrices for the given batch size.
 
@@ -127,10 +131,9 @@ class TransformLatentSamplingStrategy:
         """
         params = self.transform_sequence.get_identity_parameters(batch_size)
 
+
         T = self.transform_sequence(params)
-        assert torch.allclose(T,
-                              torch.eye(T.size(-1), device=T.device, dtype=T.dtype).unsqueeze(0).expand(batch_size, -1,
-                                                                                                        -1)), "Identity transform is not identity matrix!"
+        assert torch.allclose(T, torch.eye(T.size(-1), device=T.device,dtype=T.dtype).unsqueeze(0).expand(batch_size, -1, -1)), "Identity transform is not identity matrix!"
 
         return T
 

@@ -8,7 +8,7 @@ class ClassifyingConfidence(ConfidenceModule):
     Calculates predicted class and passes both the x and the predicted class to another confidence module.
     """
 
-    def __init__(self, confidence: torch.nn.Module = None, index=None, index_confidence=None):
+    def __init__(self,confidence: torch.nn.Module = None, index=None,index_confidence=None):
         """
         Initializes the ClassifyingConfidence.
 

@@ -1,13 +1,10 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud
-import math
 from typing import Optional
 
 import torch
+import math
 
 from src.utils.helper import identity
-from src.utils.transforms.base import Transform  # updated path
+from src.utils.transforms.base import Transform   # updated path
 from src.utils.transforms.bounded_transform import BoundedTransform  # updated path
 
 
@@ -71,7 +68,7 @@ class Scale(Transform):
             mod = torch.remainder(x, period)
             refl = torch.where(mod <= span, mod, period - mod) + lm
             result = torch.exp(refl) - 1.0
-            # result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
+            #result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
             return torch.clamp(result, lower, upper)
         else:
             # linear reflection
@@ -84,9 +81,10 @@ class Scale(Transform):
     def param_size(self) -> int:
         return self.dims
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0) -> None:
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0) -> None:
         # multi-param transform: no single-parameter orbit
         return None
+
 
     def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         lower, upper = self.calc_bounds(domain, dtype=dtype, device=device)
@@ -113,8 +111,7 @@ class Scale(Transform):
         """
         lower, upper = self.calc_bounds(domain, dtype=sparam.dtype, device=sparam.device)
         if lower.numel() != sparam.shape[-1]:
-            raise ValueError(
-                f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
+            raise ValueError(f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
         if self.log:
             l_log = torch.log(lower + 1.0)
             u_log = torch.log(upper + 1.0)
@@ -182,7 +179,7 @@ class ScaleAllSame(Transform):
             mod = torch.remainder(x, period)
             refl = torch.where(mod <= span, mod, period - mod) + lm
             result = torch.exp(refl) - 1.0
-            # result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
+            #result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
             return torch.clamp(result, lower, upper)
         else:
             span = upper - lower
@@ -221,6 +218,8 @@ class ScaleAllSame(Transform):
             lin = torch.linspace(start, end, total) + shift * spacing
             return lin[..., None].expand(lin.shape + (self.param_size(),))
 
+
+
     def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         lower, upper = self.calc_bounds(domain, dtype=dtype, device=device)
         r = torch.rand(batch_size, 1, device=device, dtype=dtype)
@@ -246,8 +245,7 @@ class ScaleAllSame(Transform):
         """
         lower, upper = self.calc_bounds(domain, dtype=sparam.dtype, device=sparam.device)
         if lower.numel() != sparam.shape[-1]:
-            raise ValueError(
-                f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
+            raise ValueError(f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
         if self.log:
             l_log = torch.log(lower + 1.0)
             u_log = torch.log(upper + 1.0)
@@ -321,7 +319,7 @@ class DirectedScale(Transform):
             mod = torch.remainder(x, period)
             refl = torch.where(mod <= span, mod, period - mod) + lm
             result = torch.exp(refl) - 1.0
-            # result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
+            #result = torch.nan_to_num(result, nan=0.0, posinf=upper.item(), neginf=lower.item())
             return torch.clamp(result, lower, upper)
         else:
             span = upper - lower
@@ -333,7 +331,7 @@ class DirectedScale(Transform):
     def param_size(self) -> int:
         return 1
 
-    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0, dim=0) -> torch.Tensor:
+    def orbit(self, n_samples: int, domain, extend: int = 0, shift: int = 0,dim=0) -> torch.Tensor:
         # Reuse calc_bounds to properly parse domain
         low_p, high_p = self.calc_bounds(domain, dtype=torch.float32, device="cpu")
         low_p, high_p = low_p.item(), high_p.item()
@@ -359,6 +357,9 @@ class DirectedScale(Transform):
             end = high_p + extend * spacing
             lin = torch.linspace(start, end, total) + shift * spacing
             return lin[..., None]
+
+
+
 
     def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         lower, upper = self.calc_bounds(domain, dtype=dtype, device=device)
@@ -386,8 +387,7 @@ class DirectedScale(Transform):
         """
         lower, upper = self.calc_bounds(domain, dtype=sparam.dtype, device=sparam.device)
         if lower.numel() != sparam.shape[-1]:
-            raise ValueError(
-                f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
+            raise ValueError(f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
         if self.log:
             l_log = torch.log(lower + 1.0)
             u_log = torch.log(upper + 1.0)
@@ -428,13 +428,13 @@ class Reflection(BoundedTransform):
     def param_size(self) -> int:
         return 1
 
-    def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
+    def sample_param(self,batch_size,domain,device="cpu",dtype=torch.float32) -> torch.Tensor:
         """
         Sample a parameter for the transformation.
         :return: The sampled parameter.
         """
         low, up = self.calc_bounds(domain, dtype=dtype, device=device)
-        res = torch.rand(batch_size, self.param_size(), device=device, dtype=dtype) * (up - low) + low
+        res= torch.rand(batch_size,self.param_size(), device=device, dtype=dtype) * (up - low) + low
         return self.normalize_parameters(res)
 
     # methods that have to be potentially overridden by subclasses
@@ -450,19 +450,20 @@ class Reflection(BoundedTransform):
         lower, upper = self.calc_bounds(domain, dtype=sparam.dtype, device=sparam.device)
         # ensure shape matches
         if lower.numel() != sparam.shape[-1]:
-            raise ValueError(
-                f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
+            raise ValueError(f"Domain parameter size ({lower.numel()}) does not match sparam last dim ({sparam.shape[-1]}).")
         span = upper - lower
         if self.log:
             # uniform in log-space of (param + 1)
             l_log = torch.log(lower + 1.0)
             u_log = torch.log(upper + 1.0)
             logs = l_log + sparam * (u_log - l_log)
-            res = torch.exp(logs) - 1.0
-            return self.normalize_parameters(res, domain)
+            res= torch.exp(logs) - 1.0
+            return self.normalize_parameters(res,domain)
 
-        res = lower + sparam * span
+        res= lower + sparam * span
         return self.normalize_parameters(res)
+
+
 
     def project_parameters(self, param: torch.Tensor, domain=None, reflect: bool = False) -> torch.Tensor:
         # Force to exactly ±1 by sign; 0 stays 0 here, handled by normalize_parameters to avoid degeneracy.
@@ -475,7 +476,8 @@ class Reflection(BoundedTransform):
         eps = torch.as_tensor(self.eps, dtype=param.dtype, device=param.device)
         return torch.sign(param) * eps
 
-    def orbit(self, n_samples: int, domain=None, extend: int = 0, shift: int = 0, dim=0) -> torch.Tensor:
+
+    def orbit(self, n_samples: int, domain=None, extend: int = 0, shift: int = 0,dim=0) -> torch.Tensor:
         # Return the two possible reflections
         vals = torch.tensor([-1.0, 1.0], dtype=torch.float32)
         if n_samples == 1:
@@ -484,13 +486,13 @@ class Reflection(BoundedTransform):
             if not self.warned:
                 print("Warning: Orbit with n_samples=1 returns only the identity (no reflection).")
                 self.warned = True
-        elif n_samples > 2:
+        elif n_samples>2:
             vals = torch.linspace(-1.0, 1.0, n_samples)
             if not self.warned_2:
-                print(
-                    f"Warning: Orbit with n_samples={n_samples} returns {n_samples} evenly spaced values between -1 and 1, which may not be meaningful for a reflection transform. The search would ideally not pass this value.")
+                print(f"Warning: Orbit with n_samples={n_samples} returns {n_samples} evenly spaced values between -1 and 1, which may not be meaningful for a reflection transform. The search would ideally not pass this value.")
                 self.warned_2 = True
         return vals[:, None]
+
 
     def default_neighbourhood_size(self, domain=None, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
@@ -500,11 +502,12 @@ class Reflection(BoundedTransform):
         """
         return torch.full((self.param_size(),), 1.0, dtype=dtype, device=device)
 
+
     def num_discrete_values(self) -> Optional[int]:
         # Reflection is a discrete transform: ±1
         return 2
 
-    def identity_param(self, batch_size: Optional[int] = 1, dtype=torch.float32, device="cpu") -> torch.Tensor:
+    def identity_param(self,batch_size: Optional[int] = 1,dtype=torch.float32, device="cpu") -> torch.Tensor:
         # Identity reflection parameter is 1.0 (no reflection)
         return torch.ones(batch_size, self.param_size(), dtype=dtype, device=device)
 
@@ -519,6 +522,7 @@ ScaleY2D = DirectedScale(2, 1)
 ScaleX3D = DirectedScale(3, 0)
 ScaleY3D = DirectedScale(3, 1)
 ScaleZ3D = DirectedScale(3, 2)
+
 
 
 def compare_and_plot(dims=2, domain=0.5, N=20000, seed=42, log=True):
@@ -567,6 +571,7 @@ def compare_and_plot(dims=2, domain=0.5, N=20000, seed=42, log=True):
 
 
 if __name__ == "__main__":
+
     import torch
     from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud
 

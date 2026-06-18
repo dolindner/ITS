@@ -1,10 +1,11 @@
 from __future__ import annotations
-
+import os
+import time
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable, Tuple
-
+from typing import Dict, Any, Optional, Callable, List, Tuple
 import yaml
-
+import optuna
+import math
 # Default parameter values for search. Must match names in objective generators or the value will be ignored.
 # Values will be passed to the models as fixed parameters via enqueue trials. As optuna by default ignores non sampled parameters,
 # we manually extract them from the fixed parameters in objective generator.
@@ -17,22 +18,19 @@ from .objective_generators import (
     _cost_pgd,
 )
 
-
 def _clip(v: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, v))
 
-
 def default_shgo_params(budget: int, grad_weight: int = 2) -> Dict[str, Any]:
     n_init = int(0.90 * budget)
-    # always allow at leaset one local run
-    min_n_init = max(0, budget - grad_weight - 1)
+    #always allow at leaset one local run
+    min_n_init = max(0, budget - grad_weight -1)
     if n_init > min_n_init > 0:
         n_init = min_n_init
 
-    max_local_runs = max(1, int((budget - n_init) / (3 * grad_weight + 1)))
+    max_local_runs = max(1,int((budget - n_init)/(3 * grad_weight +1)))
     local_runs = max(1, int(max_local_runs * 0.5))
-    per_run_budget = max(0, ((budget - n_init) - local_runs) // (
-                local_runs * grad_weight))  # at least local_runs steps for convergence
+    per_run_budget = max(0, ((budget - n_init)- local_runs)// (local_runs * grad_weight)) #at least local_runs steps for convergence
     local_steps = per_run_budget
     # Adjust if cost overflow
     if _cost_shgo(n_init, local_runs, local_steps, grad_weight) > budget:
@@ -47,18 +45,15 @@ def default_shgo_params(budget: int, grad_weight: int = 2) -> Dict[str, Any]:
         "shgo_acceptance_criterion": "step",
         "grad_weight": grad_weight,
     }
-    current_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"],
-                              grad_weight)
+    current_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"], grad_weight)
     leftover = budget - current_cost
     if leftover > 0:
         params["shgo_initial_samples"] += leftover
         # sanity check
-        final_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"],
-                                grad_weight)
+        final_cost = _cost_shgo(params["shgo_initial_samples"], params["shgo_local_runs"], params["shgo_local_steps"], grad_weight)
         if final_cost != budget:
             raise ValueError(f"SHGO default allocation mismatch after top-up: cost={final_cost}, budget={budget}")
     return params
-
 
 def default_parallel_sa_params(budget: int) -> Dict[str, Any]:
     parallel_runs = _clip(int(0.05 * budget), 1, max(1, budget // 5))
@@ -100,11 +95,9 @@ def default_pso_params(budget: int, min_swarm: int = 4) -> Dict[str, Any]:
         "pso_vmax_scale": 0.2,
     }
 
-
 def default_cd_params(budget: int, dim: Optional[int] = None, samples_min: int = 4) -> Dict[str, Any]:
     return {
     }
-
 
 def default_wcd_params(budget: int, dim: Optional[int] = None) -> Dict[str, Any]:
     # Dimension-agnostic: only persist cycles (rounds) and first-dim weight.
@@ -118,14 +111,12 @@ def default_wcd_params(budget: int, dim: Optional[int] = None) -> Dict[str, Any]
         # base and dim omitted; derive later when actual dim known
     }
 
-
 def default_wcd_lattice_params(budget: int, dim: Optional[int] = None) -> Dict[str, Any]:
     """
     Dimension-agnostic defaults for WCD with lattice initialization.
     Uses same parameter structure as regular WCD.
     """
     return default_wcd_params(budget, dim)
-
 
 def default_cd_multi_cyclus_params(budget: int, dim: Optional[int] = None) -> Dict[str, Any]:
     """
@@ -178,7 +169,6 @@ def default_random_search_params(budget: int, **kwargs) -> Dict[str, Any]:
     """
     return {}
 
-
 def default_its_params(budget: int, dim: int | None = None) -> Dict[str, Any]:
     """
     Dimension-agnostic ITS defaults (handled like cd/wcd).
@@ -192,7 +182,6 @@ def default_its_params(budget: int, dim: int | None = None) -> Dict[str, Any]:
         "its_gaussian_filter_channel_wise": False,
         "its_unique_class_condition": False,
     }
-
 
 def default_its2_params(budget: int, dim: int | None = None) -> Dict[str, Any]:
     """
@@ -237,7 +226,6 @@ PARAM_PREFIXES: Dict[str, Tuple[str, ...]] = {
     "its2": ("its_",),
 }
 
-
 def get_default_params(algo: str, budget: int, **kwargs) -> Dict[str, Any]:
     """
     Obtain default parameter dictionary for an algorithm given a budget.
@@ -246,7 +234,6 @@ def get_default_params(algo: str, budget: int, **kwargs) -> Dict[str, Any]:
     if algo not in ALGO_DEFAULT_PARAM_FACTORIES:
         raise KeyError(f"Unknown algorithm '{algo}'")
     return ALGO_DEFAULT_PARAM_FACTORIES[algo](budget, **kwargs)
-
 
 def filter_algo_params(params: Dict[str, Any], algo: str) -> Dict[str, Any]:
     """
@@ -264,7 +251,6 @@ def filter_algo_params(params: Dict[str, Any], algo: str) -> Dict[str, Any]:
                 break
     return out
 
-
 def save_params(params: Dict[str, Any], path: str | Path):
     """
     Save parameters to YAML (overwrites).
@@ -273,7 +259,6 @@ def save_params(params: Dict[str, Any], path: str | Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         yaml.safe_dump(params, f)
-
 
 def load_params(path: str | Path) -> Dict[str, Any]:
     """
@@ -288,7 +273,6 @@ def load_params(path: str | Path) -> Dict[str, Any]:
         raise ValueError(f"Parameter file {path} must contain a mapping.")
     return data
 
-
 def merge_params(base: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Shallow merge helper: overrides win.
@@ -298,7 +282,6 @@ def merge_params(base: Dict[str, Any], overrides: Optional[Dict[str, Any]] = Non
     merged = dict(base)
     merged.update(overrides)
     return merged
-
 
 # convenience wrapper for backward compatibility with old code that called default_allocation directly
 def default_allocation(algo: str, budget: int, **kwargs) -> Dict[str, Any]:

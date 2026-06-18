@@ -25,6 +25,7 @@ class ParallelGradientDescent(BaseOptimizer):
         self.project_param = project_param
         self.reflect = reflect
 
+
     def optimize(self, transformation_problem, x, y=None, verbose=False):
         """
         Run gradient descent to optimize the transformation parameters.
@@ -48,12 +49,14 @@ class ParallelGradientDescent(BaseOptimizer):
         # extract max_batch_size for chunked computation to save vram
         max_chunk = transformation_problem.max_batch_size if transformation_problem.max_batch_size is not None else total_batches
 
+
         optimizer = self.optimizer_class([current_param], lr=self.learning_rate, **self.optimizer_params)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,
                                                            gamma=self.lr_decay_rate) if self.lr_decay_rate != 1.0 else torch.optim.lr_scheduler.LambdaLR(
             optimizer, lr_lambda=lambda epoch: 1.0)
 
-        # set best values to none, other is used to keep track of class of best
+
+        #set best values to none, other is used to keep track of class of best
         best_param, best_error, best_other = None, None, None
         with torch.enable_grad():
             for iteration in range(self.max_iterations):
@@ -85,6 +88,7 @@ class ParallelGradientDescent(BaseOptimizer):
                 error = torch.cat(all_errors, dim=0)
                 other = torch.cat(all_others, dim=0)
                 e_old = error.clone()
+
 
                 del all_errors, all_others
 
@@ -118,6 +122,7 @@ class ParallelGradientDescent(BaseOptimizer):
                             f"Iter {iteration + 1}/{self.max_iterations}, LR:{lr:.6f}, Err:{e_old.mean():.4f}, Best:{best_error.mean():.4f}")
                     scheduler.step()
 
+
         # final evaluation on last params
         with torch.no_grad():
             final_error, final_other = transformation_problem.calculate_error(x_repeated, current_param, y=y_repeated)
@@ -134,3 +139,5 @@ class ParallelGradientDescent(BaseOptimizer):
         error = error.view(x.shape[0], self.parallel_runs)
         other = other.view(x.shape[0], self.parallel_runs, -1)
         return problem.consolidate(x, params, error, other)
+
+

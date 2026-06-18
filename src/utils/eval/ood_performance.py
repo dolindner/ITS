@@ -1,6 +1,3 @@
-import tempfile
-from tqdm import tqdm as _tqdm
-import math
 import json
 import os
 import warnings  # Used for the sanity checks
@@ -16,6 +13,7 @@ from confidence.model.base_model import ModelBasedConfidence
 from src.utils.transform_sequence import TransformSequence
 from src.utils.transformation_problem import TransformationProblem
 from src.utils.transforms.rotation import Rotation3DEulerUniform, RotationZ3D, RotationY3D, RotationX3D
+
 
 
 class ITSWRAPPER(torch.nn.Module):

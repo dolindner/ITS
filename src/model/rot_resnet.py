@@ -1,9 +1,11 @@
-import torch.nn.functional as F
+import math
+
+
+
 import torch
 import torch.nn as nn
-from escnn import gspaces
 from escnn import nn as escnn_nn
-
+from escnn import gspaces
 
 class GBasicBlock(nn.Module):
     def __init__(self, in_type: escnn_nn.FieldType, out_fields: int, stride: int = 1,
@@ -22,15 +24,18 @@ class GBasicBlock(nn.Module):
 
         gspace = in_type.gspace
 
+
         reg = gspace.regular_repr
         self.out_type = escnn_nn.FieldType(gspace, out_fields * [reg])
         is_continuous = False
+
 
         self.pad_blocks = pad_blocks
 
         # Convs
         self.conv1 = escnn_nn.R2Conv(in_type, self.out_type, kernel_size=3, stride=stride, padding=1, bias=False)
         self.conv2 = escnn_nn.R2Conv(self.out_type, self.out_type, kernel_size=3, padding=1, bias=False)
+
 
         # Finite groups / regular repr: pointwise nonlinearities are allowed
         self.bn1 = escnn_nn.InnerBatchNorm(self.out_type)
@@ -41,6 +46,7 @@ class GBasicBlock(nn.Module):
         self.proj = None
         if stride != 1 or in_type != self.out_type:
             self.proj = escnn_nn.R2Conv(in_type, self.out_type, kernel_size=1, stride=stride, bias=False)
+
 
     @staticmethod
     def pad_if_even(x: torch.Tensor) -> torch.Tensor:
@@ -64,8 +70,7 @@ class GBasicBlock(nn.Module):
 
 class ESCNNFlexibleResNet(nn.Module):
     def __init__(self, fields_per_stage, blocks_per_stage, num_classes=10, in_channels=1,
-                 act_cls=escnn_nn.ReLU, rotations=8, reflection=False, max_frequency=None, stem_stride=1,
-                 pad_blocks=False,
+                 act_cls=escnn_nn.ReLU, rotations=8, reflection=False, max_frequency=None, stem_stride=1, pad_blocks=False,
                  pad_input=False):
         super().__init__()
         """
@@ -85,6 +90,7 @@ class ESCNNFlexibleResNet(nn.Module):
             pad_input: Whether to pad input images to odd dimensions before processing.
         """
 
+
         if reflection:
             self.gspace = gspaces.flipRot2dOnR2(N=rotations)
         else:
@@ -96,6 +102,7 @@ class ESCNNFlexibleResNet(nn.Module):
         self.pad_blocks = pad_blocks
         self.pad_input = pad_input
 
+
         first_type = escnn_nn.FieldType(self.gspace, fields_per_stage[0] * [self.gspace.regular_repr])
         in_type = escnn_nn.FieldType(self.gspace, in_channels * [self.gspace.trivial_repr])
 
@@ -106,6 +113,7 @@ class ESCNNFlexibleResNet(nn.Module):
 
         # detect trivial irreps in first_type
         has_trivial = any(r.is_trivial() for r in first_type.representations)
+
 
         self.stem_bn = escnn_nn.InnerBatchNorm(first_type)
         self.stem_act = act_cls(first_type, inplace=True)
@@ -166,6 +174,8 @@ class ESCNNFlexibleResNet(nn.Module):
 import torch
 
 
+import torch
+
 @torch.no_grad()
 def tst_ESCNN_invariance(model, N=4, device="cuda"):
     """
@@ -185,7 +195,114 @@ def tst_ESCNN_invariance(model, N=4, device="cuda"):
 
         # compare logits
         err = (yr - y0).abs().max().item()
-        print(f"Rotation {k * 90:3d}° | max difference = {err:.6f}")
+        print(f"Rotation {k*90:3d}° | max difference = {err:.6f}")
 
     print("================================================\n")
 
+
+
+
+if __name__ == "__main__":
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import time
+
+    # Example only – use your own ESCNN model
+    model = ESCNNFlexibleResNet(
+        fields_per_stage=[8, 16],
+        blocks_per_stage=[2, 2],
+        num_classes=10,
+        in_channels=1,
+        rotations=4,
+        reflection=False,
+        continuous=False,
+        stem_stride=1
+    ).cuda().eval()
+
+    tst_ESCNN_invariance(model, N=4)
+
+    from equiadapt import RotoReflectionEquivariantConv,RotationEquivariantConv
+
+    block = GroupBasicBlock(
+        in_ch=3, out_ch=6,
+        num_rotations=4,
+        use_reflection=False,
+        stride=2
+    ).cuda()
+
+    errs = tst_equivariance(
+        block,
+        num_rotations=4,
+        use_reflection=False
+    )
+
+    # Standard Conv2d baseline
+    class StandardConv(nn.Module):
+        def __init__(self, in_ch, out_ch, k, stride=1, padding=1):
+            super().__init__()
+            self.conv = nn.Conv2d(in_ch, out_ch, k, stride=stride, padding=padding)
+
+        def forward(self, x):
+            return self.conv(x)
+
+    device = "cuda"
+
+    # instantiate GroupResNet - keep group_pool='none' to preserve G axis
+    net = GroupResNet(
+        channels=[16],
+        blocks_per_stage=[2],
+        num_classes=10,
+        in_channels=1,
+        num_rotations=4,
+        use_reflection=False,
+        group_pool='none',   # preserve group axis for equivariance test
+        pad_input=True,
+        pad_blocks=False,
+        stem_stride=1,
+        stem_channels=16,
+    ).to(device).eval()
+
+    errs = tst_equivariance_resnet(
+        net,
+        num_rotations=4,
+        use_reflection=False,
+        B=2, in_ch=1, H=31, W=31, tol=1e-4, verbose=True
+    )
+
+
+    device = "cuda"
+    B, Cin, Cout, H, W = 8, 64, 128, 64, 64
+    num_rotations = 1
+
+    x_equi = torch.randn(B, int(Cin/math.sqrt(1)), num_rotations, H, W, device=device)
+    x = torch.randn(B, Cin*num_rotations, H, W, device=device)
+
+    # Instantiate layers
+    equiv = RotationEquivariantConv(int(Cin/math.sqrt(1)), int(Cout/math.sqrt(1)), 3, num_rotations=num_rotations, padding=1, device=device).eval().cuda()
+    cnn = torch.nn.Conv2d(Cin  * num_rotations, Cout  * num_rotations, 3, padding=1).eval().cuda()
+
+    # Warmup
+    for _ in range(10):
+        equiv(x_equi)
+        cnn(x)
+
+
+
+    torch.cuda.synchronize()
+    t2 = time.time()
+    for _ in range(100):
+        cnn(x)
+        torch.cuda.synchronize()
+    t3 = time.time()
+
+    # Benchmark
+    torch.cuda.synchronize()
+    t0 = time.time()
+    for _ in range(100):
+        equiv(x_equi)
+        torch.cuda.synchronize()
+    t1 = time.time()
+
+    print(f"RotoReflectionConv: {(t1 - t0) / 50 * 1000:.2f} ms/iter")
+    print(f"Standard CNN Conv  : {(t3 - t2) / 50 * 1000:.2f} ms/iter")

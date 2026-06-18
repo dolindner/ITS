@@ -1,15 +1,13 @@
-# method used by Inverse Transformation Search to enhance energy.
+#method used by Inverse Transformation Search to enhance energy.
 import torch
 
 from confidence.base_confidence import ConfidenceModule
-
 
 class CurvatureRefiner(ConfidenceModule):
     """
     Refines the energy scores returned by EnergyConfidence. To use, use something like
     torch.nn.Sequential(EnergyConfidence(), CurvatureRefiner()).
     """
-
     def __init__(self):
         super(CurvatureRefiner, self).__init__()
 
@@ -26,14 +24,12 @@ class CurvatureRefiner(ConfidenceModule):
         g2 = torch.gradient(g1, dim=-1)[0]
         return -g2
 
-
 class GaussianSmoothingRefiner(ConfidenceModule):
     """
     Refines the energy scores using Gaussian smoothing. This requires the input to have the form
     (batch_size, channels, samples_next_to_each_other). Gaussian smoothing can be applied channel-wise or not.
     Use as something like torch.nn.Sequential(EnergyConfidence(), GaussianSmoothingRefiner()).
     """
-
     def __init__(self, sigma=2.0, radius=3, channel_wise=False):
         """
         Args:
@@ -55,8 +51,7 @@ class GaussianSmoothingRefiner(ConfidenceModule):
         Returns:
             The smoothed confidence scores with the same shape as the input.
         """
-        gaussian_kernel = torch.exp(-torch.arange(-self.radius, self.radius + 1, dtype=confidence_scores.dtype,
-                                                  device=confidence_scores.device) ** 2 / (2 * self.sigma ** 2))
+        gaussian_kernel = torch.exp(-torch.arange(-self.radius, self.radius + 1, dtype=confidence_scores.dtype, device=confidence_scores.device)**2 / (2 * self.sigma**2))
         gaussian_kernel /= gaussian_kernel.sum()
         confidence_scores = torch.nn.functional.pad(confidence_scores, (self.radius, self.radius), mode='replicate')
         expanded = False

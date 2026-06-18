@@ -1,26 +1,25 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import math
 
 import torch
+import math
 
 from src.utils.helper import identity
-from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud
 from src.utils.transforms.base import Transform
 from src.utils.transforms.periodic_transform import PeriodicTransform
+from src.utils.transforms.bounded_transform import BoundedTransform
+from src.utils.transforms.apply import grid_resample, transform_3d_point_cloud
+
+#TODO reprojection function do not generally find the closest solution in matrix space
+#This is a problem as converting to quaternion and back may result in a solution that is outside the domain to do there being multiple the same represnation in axis angle represenation(likely to due gimbal lock)
+#TODO look at libaries like roma for better matrix and conversion functions
 
 
-# TODO reprojection function do not generally find the closest solution in matrix space
-# This is a problem as converting to quaternion and back may result in a solution that is outside the domain to do there being multiple the same represnation in axis angle represenation(likely to due gimbal lock)
-# TODO look at libaries like roma for better matrix and conversion functions
 
 
-# first 2d cases
+#first 2d cases
 
 
 class Rotation2D(PeriodicTransform):
     """2D rotation transformation."""
-
     def __init__(self):
         self.dims = 2
 
@@ -49,6 +48,8 @@ class Rotation2D(PeriodicTransform):
 
     def param_size(self) -> int:
         return 1
+
+
 
     def interval(self):
         """Return the natural interval for this periodic transform."""
@@ -92,19 +93,19 @@ class RotationComplex(Transform):
     def param_size(self) -> int:
         return 2
 
-    def normalize_parameters(self, param: torch.Tensor) -> torch.Tensor:
+    def normalize_parameters(self, param: torch.Tensor) -> torch.Tensor:  
         return param / (torch.norm(param, dim=-1, keepdim=True) + 1e-12)
 
-    def normalization_violation(self, param: torch.Tensor) -> torch.Tensor:
+    def normalization_violation(self, param: torch.Tensor) -> torch.Tensor:  
         return torch.abs(torch.norm(param, dim=-1) - 1.0)
 
     def supports_sobol(self) -> bool:  # CHANGED (was False)
         return True
 
-    def sample_space_param_size(self):
+    def sample_space_param_size(self):  
         return 1  # single uniform -> angle; still accepts 2
 
-    def sobol_to_param(self, sparam: torch.Tensor, domain) -> torch.Tensor:
+    def sobol_to_param(self, sparam: torch.Tensor,domain) -> torch.Tensor:  
         """
         Map Sobol samples in [0,1]^k to unit complex numbers while respecting an angular domain.
           - domain scalar R      -> angle ∈ [-R, R]
@@ -209,8 +210,7 @@ class RotationComplex(Transform):
         elif dom.ndim == 2 and dom.shape[1] == 2:
             low, high = float(dom[0, 0].item()), float(dom[0, 1].item())
         else:
-            raise ValueError(
-                f"Unsupported domain for RotationComplex.default_neighbourhood_size: shape={tuple(dom.shape)}")
+            raise ValueError(f"Unsupported domain for RotationComplex.default_neighbourhood_size: shape={tuple(dom.shape)}")
 
         if low <= high:
             span = high - low
@@ -221,7 +221,7 @@ class RotationComplex(Transform):
         step_scalar = max(0.0, min(2.0, step_scalar))
         return torch.full((2,), step_scalar, dtype=dtype, device=device)
 
-    def orbit(self, n_samples: int, domain=2 * math.pi, dim=0, extend: int = 0, shift: int = 0) -> torch.Tensor:
+    def orbit(self, n_samples: int, domain=2 * math.pi,dim=0, extend: int = 0, shift: int = 0) -> torch.Tensor:
         """Generate an orbit of complex rotation parameters on the unit circle, respecting wrapped domains."""
         # parse bounds (preserve wrap)
         low_t, high_t = self.calc_bounds(domain, dtype=torch.float32, device="cpu")
@@ -277,7 +277,7 @@ class RotationComplex(Transform):
         cos_theta = torch.clamp(cos_theta, -1.0 + eps, 1.0 - eps)
         return torch.arccos(cos_theta)
 
-    def identity_param(self, batch_size=1, dtype=torch.float32, device="cpu") -> torch.Tensor:
+    def identity_param(self, batch_size = 1, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
         Returns the parameter that corresponds to the identity transformation.
         By default, returns a zero tensor.
@@ -287,18 +287,20 @@ class RotationComplex(Transform):
         return torch.tensor([1.0, 0.0], dtype=dtype, device=device).expand(batch_size, -1)
 
 
-# 3d cases
+
+
+
+#3d cases
 
 class Rotation3DEuler(PeriodicTransform):
     """3D rotation using Euler angles."""
-
-    def __init__(self, extrinsic=True):
+    def __init__(self,extrinsic=True):
         super().__init__()
         self.dims = 3
         self.extrinsic = extrinsic  # Use extrinsic ZYX convention (yaw-pitch-roll)
 
     @staticmethod
-    def static_matrix(param: torch.Tensor, extrinsic=True) -> torch.Tensor:
+    def static_matrix(param: torch.Tensor,extrinsic=True) -> torch.Tensor:
         """
         Create a 3D rotation matrix using extrinsic zyx Euler angles (yaw-pitch-roll).
 
@@ -367,10 +369,11 @@ class Rotation3DEuler(PeriodicTransform):
         """
         return self.static_matrix(param)
 
+
     def param_size(self) -> int:
         return 3
 
-    def orbit(self, n_samples: int, domain=2 * math.pi, extend: int = 0, shift: int = 0) -> None:
+    def orbit(self, n_samples: int, domain=2*math.pi, extend: int = 0, shift: int = 0) -> None:
         """No orbit for multi-parameter transform."""
         return None
 
@@ -379,8 +382,8 @@ class Rotation3DEuler(PeriodicTransform):
         return -math.pi, math.pi
 
 
-import torch, math
 
+import torch, math
 
 class Rotation3DEulerUniform(PeriodicTransform):
     """
@@ -395,6 +398,7 @@ class Rotation3DEulerUniform(PeriodicTransform):
         super().__init__()
         self.dims = 3
         self.extrinsic = extrinsic  # Use extrinsic ZYX (yaw-pitch-roll)
+
 
     def matrix(self, param: torch.Tensor) -> torch.Tensor:
         """Create a 3D rotation matrix using Euler angles."""
@@ -500,9 +504,9 @@ class Rotation3DEulerUniform(PeriodicTransform):
         return euler_angles
 
 
+
 class RotationQuaternion(Transform):
     """3D rotation using quaternions."""
-
     def __init__(self):
         self.dims = 3
         self.warned = False
@@ -552,10 +556,10 @@ class RotationQuaternion(Transform):
         mask = q[..., 0] < 0  # canonicalize (w >= 0)
         return torch.where(mask.unsqueeze(-1), -q, q)
 
-    def project_parameters(self, param: torch.Tensor, domain, reflect: bool = True) -> torch.Tensor:
+    def project_parameters(self, param: torch.Tensor, domain, reflect: bool = True) -> torch.Tensor:  
         return self.normalize_parameters(param)
 
-    def normalization_violation(self, param: torch.Tensor) -> torch.Tensor:
+    def normalization_violation(self, param: torch.Tensor) -> torch.Tensor:  
         return torch.abs(torch.norm(param, dim=-1) - 1.0)
 
     def supports_sobol(self) -> bool:  # CHANGED (was False)
@@ -565,7 +569,7 @@ class RotationQuaternion(Transform):
         # Default to 3 (Shoemake) but accept 4 if user provides (Gaussian).
         return 3
 
-    def sobol_to_param(self, sparam: torch.Tensor, domain) -> torch.Tensor:
+    def sobol_to_param(self, sparam: torch.Tensor,domain) -> torch.Tensor:  
         """
         Map Sobol samples to unit quaternions (canonical w >= 0).
           If last_dim == 3: Shoemake method (u1,u2,u3) -> (x,y,z,w)
@@ -607,6 +611,7 @@ class RotationQuaternion(Transform):
     def supports_orbit(self) -> bool:  # CHANGED (was False)
         return True
 
+
     def distance(self, param1: torch.Tensor, param2: torch.Tensor) -> torch.Tensor:
         # Normalize quaternions and account for double cover
         eps = 1e-8
@@ -620,7 +625,7 @@ class RotationQuaternion(Transform):
         dot = torch.clamp(dot, 0.0, 1.0 - eps)  # Avoid acos(>1)
         return 2 * torch.arccos(dot)
 
-    def sample_param(self, batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
+    def sample_param(self,batch_size, domain, device="cpu", dtype=torch.float32) -> torch.Tensor:
         q = torch.randn(batch_size, 4, device=device, dtype=dtype)
         return self.normalize_parameters(q)
 
@@ -707,7 +712,7 @@ class RotationQuaternion(Transform):
         """
         if domain is None:
             lower = torch.tensor([0.0, -1.0, -1.0, -1.0], dtype=dtype, device=device)
-            upper = torch.tensor([1.0, 1.0, 1.0, 1.0], dtype=dtype, device=device)
+            upper = torch.tensor([1.0,  1.0,  1.0,  1.0], dtype=dtype, device=device)
             return lower, upper
 
         dom = torch.as_tensor(domain, dtype=torch.float64)
@@ -715,7 +720,7 @@ class RotationQuaternion(Transform):
         if dom.ndim == 0:
             a = float(abs(dom.item()))
             lower = torch.tensor([0.0, -a, -a, -a], dtype=dtype, device=device)
-            upper = torch.tensor([a, a, a, a], dtype=dtype, device=device)
+            upper = torch.tensor([a,   a,  a,  a], dtype=dtype, device=device)
             return lower, upper
 
         if dom.ndim == 1 and dom.numel() == 2:
@@ -759,7 +764,8 @@ class RotationQuaternion(Transform):
         span = (upper - lower).to(dtype=dtype, device=device)
         return torch.clamp(span, min=1e-8)
 
-    def identity_param(self, batch_size=1, dtype=torch.float32, device="cpu") -> torch.Tensor:
+
+    def identity_param(self, batch_size = 1, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
         Returns the parameter that corresponds to the identity transformation.
         For quaternions, this is [1, 0, 0, 0].
@@ -768,37 +774,36 @@ class RotationQuaternion(Transform):
         """
         return torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=dtype, device=device).expand(batch_size, -1)
 
-
 class DirectedRotation3D(PeriodicTransform):
-    """Rotation in a specific axis direction in 3D."""
+        """Rotation in a specific axis direction in 3D."""
+        def __init__(self, axis: int):
+            self.dims = 3
+            self.axis = axis  # 0: Z, 1: Y, 2: X
 
-    def __init__(self, axis: int):
-        self.dims = 3
-        self.axis = axis  # 0: Z, 1: Y, 2: X
+        def matrix(self, param: torch.Tensor) -> torch.Tensor:
+            """
+            Create a 3D rotation matrix that rotates around a specific axis.
 
-    def matrix(self, param: torch.Tensor) -> torch.Tensor:
-        """
-        Create a 3D rotation matrix that rotates around a specific axis.
+            Args:
+                param: Tensor of shape (..., 1) with rotation angle
 
-        Args:
-            param: Tensor of shape (..., 1) with rotation angle
+            Returns:
+                Homogeneous rotation matrix of shape (..., 4, 4)
+            """
+            # Create a full parameter vector with zeros except at the specified axis
+            expanded_param = torch.zeros(param.shape[:-1] + (3,), dtype=param.dtype, device=param.device)
+            expanded_param[..., self.axis] = param.squeeze(-1)
 
-        Returns:
-            Homogeneous rotation matrix of shape (..., 4, 4)
-        """
-        # Create a full parameter vector with zeros except at the specified axis
-        expanded_param = torch.zeros(param.shape[:-1] + (3,), dtype=param.dtype, device=param.device)
-        expanded_param[..., self.axis] = param.squeeze(-1)
+            # Use the Euler rotation matrix function
+            return Rotation3DEuler.static_matrix(expanded_param)
 
-        # Use the Euler rotation matrix function
-        return Rotation3DEuler.static_matrix(expanded_param)
+        def param_size(self) -> int:
+            return 1
 
-    def param_size(self) -> int:
-        return 1
+        def interval(self):
+            """Return the natural interval for this periodic transform."""
+            return -math.pi, math.pi
 
-    def interval(self):
-        """Return the natural interval for this periodic transform."""
-        return -math.pi, math.pi
 
 
 class Rotation2Vec(Transform):
@@ -836,6 +841,7 @@ class Rotation2Vec(Transform):
 
         # Assemble 3×3 and embed into 4×4
         R = torch.stack([b1, b2, b3], dim=-1)  # (...,3,3)
+
 
         H = identity(batch, 4, dtype=param.dtype, device=param.device)
 
@@ -896,15 +902,16 @@ class Rotation2Vec(Transform):
         # Convert quaternion to rotation matrix (full 3x3)
         r00 = 1 - 2 * (y ** 2 + z ** 2)
         r01 = 2 * (x * y - z * w)
-        # r02 = 2 * (x * z + y * w)
+        #r02 = 2 * (x * z + y * w)
 
         r10 = 2 * (x * y + z * w)
         r11 = 1 - 2 * (x ** 2 + z ** 2)
-        # r12 = 2 * (y * z - x * w)
+        #r12 = 2 * (y * z - x * w)
 
         r20 = 2 * (x * z - y * w)
         r21 = 2 * (y * z + x * w)
-        # r22 = 1 - 2 * (x ** 2 + y ** 2)
+        #r22 = 1 - 2 * (x ** 2 + y ** 2)
+
 
         a1 = torch.stack([r00, r10, r20], dim=-1)
         a2 = torch.stack([r01, r11, r21], dim=-1)
@@ -925,15 +932,15 @@ class Rotation2Vec(Transform):
 
         r00 = 1 - 2 * (y ** 2 + z ** 2)
         r01 = 2 * (x * y - z * w)
-        # r02 = 2 * (x * z + y * w)
+        #r02 = 2 * (x * z + y * w)
 
         r10 = 2 * (x * y + z * w)
         r11 = 1 - 2 * (x ** 2 + z ** 2)
-        # r12 = 2 * (y * z - x * w)
+        #r12 = 2 * (y * z - x * w)
 
         r20 = 2 * (x * z - y * w)
         r21 = 2 * (y * z + x * w)
-        # r22 = 1 - 2 * (x ** 2 + y ** 2)
+        #r22 = 1 - 2 * (x ** 2 + y ** 2)
 
         # Extract first two columns as 2-vectors
         a1 = torch.stack([r00, r10, r20], dim=-1)
@@ -1055,7 +1062,8 @@ class Rotation2Vec(Transform):
         """
         return False
 
-    def identity_param(self, batch_size=1, dtype=torch.float32, device="cpu") -> torch.Tensor:
+
+    def identity_param(self, batch_size = 1, dtype=torch.float32, device="cpu") -> torch.Tensor:
         """
         Returns the parameter that corresponds to the identity transformation.
         For 2-vector representation, this is two orthonormal vectors aligned with axes.
@@ -1066,43 +1074,47 @@ class Rotation2Vec(Transform):
         return identity_vectors.expand(batch_size, -1)
 
 
+
 # 2d
 Rotation_2D = Rotation2D()
 RotationComplex2D = RotationComplex()
 
 DirectedRotation2D = Rotation2D
-# 3d
+#3d
 Rotation3DEulerIn_instance = Rotation3DEuler(extrinsic=False)  # Intrinsic ZYX Euler angles
 Rotation3DEuler_instance = Rotation3DEuler()
 
+
+
 RotationQuaternion3D = RotationQuaternion()
 Rotation2Vec3D = Rotation2Vec()  # 3D rotation using two vectors
+
+
 
 RotationZ3D = DirectedRotation3D(0)
 RotationY3D = DirectedRotation3D(1)
 RotationX3D = DirectedRotation3D(2)
 
 
-# TODO check if conversion functions are needed.
+#TODO check if conversion functions are needed.
 
 def euler_to_quaternion(param: torch.Tensor) -> torch.Tensor:
     """
     Convert a batch of 3D Euler angles (roll, pitch, yaw) to quaternions (w, x, y, z).
     Expects `param` to have shape (..., 3) and returns a tensor of shape (..., 4).
     """
-    y, p, r = param.unbind(-1)
+    y,p,r = param.unbind(-1)
     hr, hp, hy = 0.5 * r, 0.5 * p, 0.5 * y
     cr, sr = torch.cos(hr), torch.sin(hr)
     cp, sp = torch.cos(hp), torch.sin(hp)
     cy, sy = torch.cos(hy), torch.sin(hy)
 
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
+    w  = cr * cp * cy + sr * sp * sy
+    x  = sr * cp * cy - cr * sp * sy
     yq = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
+    z  = cr * cp * sy - sr * sp * cy
 
     return torch.stack([w, x, yq, z], dim=-1)
-
 
 def quaternion_to_euler(param: torch.Tensor) -> torch.Tensor:
     """
@@ -1123,8 +1135,9 @@ def quaternion_to_euler(param: torch.Tensor) -> torch.Tensor:
     t4 = 1 - 2 * (yq * yq + z * z)
     yaw = torch.atan2(t3, t4)
 
-    angles = torch.stack([yaw, pitch, roll], dim=-1)
+    angles= torch.stack([yaw,pitch,roll], dim=-1)
     return angles
+
 
 
 def angle_to_complex(param: torch.Tensor) -> torch.Tensor:
@@ -1134,7 +1147,6 @@ def angle_to_complex(param: torch.Tensor) -> torch.Tensor:
     """
     θ = param.squeeze(-1)
     return torch.stack([torch.cos(θ), torch.sin(θ)], dim=-1)
-
 
 def complex_to_angle(param: torch.Tensor) -> torch.Tensor:
     """
@@ -1180,11 +1192,10 @@ def quaternion_to_skew_general(param: torch.Tensor) -> torch.Tensor:
 
     # map to skew params [p01, p02, p12] ugly
     p01 = -a3
-    p02 = a2
+    p02 =  a2
     p12 = -a1
 
     return torch.stack([p01, p02, p12], dim=-1)
-
 
 def skew_general_to_skew_3d(param: torch.Tensor) -> torch.Tensor:
     """
@@ -1201,7 +1212,6 @@ def skew_general_to_skew_3d(param: torch.Tensor) -> torch.Tensor:
 
     return torch.stack([vx, vy, vz], dim=-1)
 
-
 def skew_3d_to_skew_general(param: torch.Tensor) -> torch.Tensor:
     """
     Convert axis-angle parameters [vx, vy, vz] to skew parameters [p01, p02, p12].
@@ -1211,10 +1221,11 @@ def skew_3d_to_skew_general(param: torch.Tensor) -> torch.Tensor:
 
     # map to skew params [p01, p02, p12] ugly
     p01 = -vz
-    p02 = vy
+    p02 =  vy
     p12 = -vx
 
     return torch.stack([p01, p02, p12], dim=-1)
+
 
 
 def skew_general_to_quaternion(param: torch.Tensor) -> torch.Tensor:
@@ -1258,87 +1269,89 @@ def skew_general_to_quaternion(param: torch.Tensor) -> torch.Tensor:
 
 
 def quaternion_to_skew_3d(quat: torch.Tensor) -> torch.Tensor:
-    """
-    Convert quaternion [w, x, y, z] to axis-angle parameters [vx, vy, vz].
+        """
+        Convert quaternion [w, x, y, z] to axis-angle parameters [vx, vy, vz].
 
-    This conversion is direct without parameter inversions since we use
-    the standard axis-angle to skew-symmetric matrix mapping.
+        This conversion is direct without parameter inversions since we use
+        the standard axis-angle to skew-symmetric matrix mapping.
 
-    Args:
-        quat: Tensor of shape (..., 4) containing quaternions [w, x, y, z]
+        Args:
+            quat: Tensor of shape (..., 4) containing quaternions [w, x, y, z]
 
-    Returns:
-        Tensor of shape (..., 3) containing axis-angle parameters [vx, vy, vz]
-    """
-    w, x, y, z = quat.unbind(-1)
+        Returns:
+            Tensor of shape (..., 3) containing axis-angle parameters [vx, vy, vz]
+        """
+        w, x, y, z = quat.unbind(-1)
 
-    # Ensure w >= 0 (choose shorter rotation path)
-    mask = w < 0
-    w = torch.where(mask, -w, w)
-    x = torch.where(mask, -x, x)
-    y = torch.where(mask, -y, y)
-    z = torch.where(mask, -z, z)
+        # Ensure w >= 0 (choose shorter rotation path)
+        mask = w < 0
+        w = torch.where(mask, -w, w)
+        x = torch.where(mask, -x, x)
+        y = torch.where(mask, -y, y)
+        z = torch.where(mask, -z, z)
 
-    # Convert to axis-angle
-    eps = 1e-7
-    half_angle = torch.acos(torch.clamp(w, -1.0 + eps, 1.0 - eps))
-    angle = 2.0 * half_angle
-    sin_half = torch.sin(half_angle)
+        # Convert to axis-angle
+        eps = 1e-7
+        half_angle = torch.acos(torch.clamp(w, -1.0 + eps, 1.0 - eps))
+        angle = 2.0 * half_angle
+        sin_half = torch.sin(half_angle)
 
-    # Compute scale factor for axis recovery
-    scale = torch.where(
-        angle < eps,
-        torch.full_like(angle, 2.0),  # Small angle approximation
-        angle / sin_half
-    )
+        # Compute scale factor for axis recovery
+        scale = torch.where(
+            angle < eps,
+            torch.full_like(angle, 2.0),  # Small angle approximation
+            angle / sin_half
+        )
 
-    # Axis-angle vector (no inversions needed!)
-    vx = x * scale
-    vy = y * scale
-    vz = z * scale
+        # Axis-angle vector (no inversions needed!)
+        vx = x * scale
+        vy = y * scale
+        vz = z * scale
 
-    return torch.stack([vx, vy, vz], dim=-1)
-
+        return torch.stack([vx, vy, vz], dim=-1)
 
 def skew_3d_to_quaternion(param: torch.Tensor) -> torch.Tensor:
-    """
-    Convert axis-angle parameters [vx, vy, vz] to quaternion [w, x, y, z].
+        """
+        Convert axis-angle parameters [vx, vy, vz] to quaternion [w, x, y, z].
 
-    Args:
-        param: Tensor of shape (..., 3) containing axis-angle parameters
+        Args:
+            param: Tensor of shape (..., 3) containing axis-angle parameters
 
-    Returns:
-        Tensor of shape (..., 4) containing quaternions [w, x, y, z]
-    """
-    vx, vy, vz = param.unbind(-1)
-    v = torch.stack([vx, vy, vz], dim=-1)
+        Returns:
+            Tensor of shape (..., 4) containing quaternions [w, x, y, z]
+        """
+        vx, vy, vz = param.unbind(-1)
+        v = torch.stack([vx, vy, vz], dim=-1)
 
-    # Compute angle and half-angle
-    angle = torch.norm(v, dim=-1)
-    half_angle = 0.5 * angle
-    cos_half = torch.cos(half_angle)
-    sin_half = torch.sin(half_angle)
+        # Compute angle and half-angle
+        angle = torch.norm(v, dim=-1)
+        half_angle = 0.5 * angle
+        cos_half = torch.cos(half_angle)
+        sin_half = torch.sin(half_angle)
 
-    # Avoid division by zero for small angles
-    eps = 1e-7
-    sin_half_over_angle = torch.where(
-        angle < eps,
-        torch.full_like(angle, 0.5),  # Small angle approximation
-        sin_half / angle
-    )
+        # Avoid division by zero for small angles
+        eps = 1e-7
+        sin_half_over_angle = torch.where(
+            angle < eps,
+            torch.full_like(angle, 0.5),  # Small angle approximation
+            sin_half / angle
+        )
 
-    # Build quaternion
-    w = cos_half
-    x = vx * sin_half_over_angle
-    y = vy * sin_half_over_angle
-    z = vz * sin_half_over_angle
-    quat = torch.stack([w, x, y, z], dim=-1)
+        # Build quaternion
+        w = cos_half
+        x = vx * sin_half_over_angle
+        y = vy * sin_half_over_angle
+        z = vz * sin_half_over_angle
+        quat = torch.stack([w, x, y, z], dim=-1)
 
-    # Ensure w >= 0 for canonical representation
-    mask = quat[..., 0] < 0
-    quat[mask] = -quat[mask]
+        # Ensure w >= 0 for canonical representation
+        mask = quat[..., 0] < 0
+        quat[mask] = -quat[mask]
 
-    return quat
+        return quat
+
+
+
 
 
 if __name__ == "__main__":
@@ -1355,7 +1368,7 @@ if __name__ == "__main__":
         for sample_method_name in ["sample_param", "sobol_to_param"]:
             print(f"  Testing with {sample_method_name}...")
             if sample_method_name == "sample_param":
-                params = uniform_rot_sampler.sample_param(n_samples_uniform, device="cpu", domain=None)
+                params = uniform_rot_sampler.sample_param(n_samples_uniform, device="cpu",domain=None)
             else:  # sobol_to_param
                 sobol_engine = torch.quasirandom.SobolEngine(dimension=3)
                 sobol_samples = sobol_engine.draw(n_samples_uniform)
@@ -1396,11 +1409,14 @@ if __name__ == "__main__":
             print(
                 f"  Plot for {sample_method_name} generated. Visually inspect if the histogram matches the theoretical curve.")
 
-    print("Testing class-based rotation transforms_old...")
 
+
+
+    print("Testing class-based rotation transforms_old...")
+    
     # Create test data
     x_img = torch.randn(1, 1, 28, 28)  # 2D image
-    x_pc = torch.randn(1, 1024, 3)  # 3D point cloud
+    x_pc = torch.randn(1, 1024, 3)    # 3D point cloud
     x_img_d = x_img.to(torch.double)  # Double precision for numeric gradient checks
     x_pc_d = x_pc.to(torch.double)
 
@@ -1453,7 +1469,7 @@ if __name__ == "__main__":
     out_2d.sum().backward()
     assert param_2d.grad is not None and param_2d.grad.abs().sum() > 0, "2D rotation gradient failed"
     print("2D rotation gradient check passed")
-
+    
     # Test 2: 3D Euler Rotation
     print("\n2. Testing 3D Euler rotation:")
     param_3d_euler = torch.randn(1, 3, requires_grad=True)
@@ -1462,7 +1478,7 @@ if __name__ == "__main__":
     out_3d_euler.sum().backward()
     assert param_3d_euler.grad is not None and param_3d_euler.grad.abs().sum() > 0, "3D Euler rotation gradient failed"
     print("3D Euler rotation gradient check passed")
-
+    
     # Test 3: 3D Single-Axis Rotation (X-axis)
     print("\n3. Testing 3D X-axis rotation:")
     param_x = torch.tensor([[0.7]], requires_grad=True)
@@ -1471,7 +1487,7 @@ if __name__ == "__main__":
     out_x.sum().backward()
     assert param_x.grad is not None and param_x.grad.abs().sum() > 0, "X-axis rotation gradient failed"
     print("X-axis rotation gradient check passed")
-
+    
     # Test 4: 3D Y-axis and Z-axis rotations
     print("\n4. Testing 3D Y-axis and Z-axis rotations:")
     param_y = torch.tensor([[0.6]], requires_grad=True)
@@ -1480,14 +1496,15 @@ if __name__ == "__main__":
     out_y.sum().backward()
     assert param_y.grad is not None and param_y.grad.abs().sum() > 0, "Y-axis rotation gradient failed"
     print("Y-axis rotation gradient check passed")
-
+    
     param_z = torch.tensor([[0.4]], requires_grad=True)
     matrix_z = RotationZ3D.matrix(param_z)
     out_z = transform_3d_point_cloud(x_pc, matrix_z)
     out_z.sum().backward()
     assert param_z.grad is not None and param_z.grad.abs().sum() > 0, "Z-axis rotation gradient failed"
     print("Z-axis rotation gradient check passed")
-
+    
+    
     # Test 6: Quaternion Rotation
     print("\n6. Testing quaternion rotation:")
     param_quat = torch.randn(1, 4, requires_grad=True)
@@ -1498,7 +1515,7 @@ if __name__ == "__main__":
     out_quat.sum().backward()
     assert param_quat.grad is not None and param_quat.grad.abs().sum() > 0, "Quaternion rotation gradient failed"
     print("Quaternion rotation gradient check passed")
-
+    
     # Test 7: Complex Number Rotation
     print("\n7. Testing complex number rotation:")
     param_complex = torch.randn(1, 2, requires_grad=True)
@@ -1509,51 +1526,51 @@ if __name__ == "__main__":
     out_complex.sum().backward()
     assert param_complex.grad is not None and param_complex.grad.abs().sum() > 0, "Complex rotation gradient failed"
     print("Complex rotation gradient check passed")
-
+    
     # Test 8: Parameter Bounds and Projections
     print("\n8. Testing parameter bounds and projections:")
-
+    
     # 2D rotation
     angle_over = torch.tensor([[4.0]])  # Outside of [-π, π]
-    angle_proj = Rotation2D.project_parameters(angle_over, 2 * math.pi)
+    angle_proj = Rotation2D.project_parameters(angle_over, 2*math.pi)
     print(f"2D angle {angle_over[0][0]:.3f} projected to {angle_proj[0][0]:.3f}")
     assert -math.pi <= angle_proj[0][0] <= math.pi, "2D angle projection failed"
-
+    
     # 3D Euler rotation
     angles_over = torch.tensor([[4.0, -4.0, 7.0]])  # Outside of [-π, π]
-    angles_proj = Rotation3DEuler.project_parameters(angles_over, 2 * math.pi)
+    angles_proj = Rotation3DEuler.project_parameters(angles_over, 2*math.pi)
     print(f"3D Euler angles {angles_over[0].tolist()} projected to {angles_proj[0].tolist()}")
     assert torch.all((angles_proj >= -math.pi) & (angles_proj <= math.pi)), "3D Euler angles projection failed"
-
+    
     # Quaternion normalization
     quat_unnorm = torch.tensor([[2.0, 3.0, 4.0, 5.0]])  # Not normalized
     quat_norm = RotationQuaternion3D.project_parameters(quat_unnorm, None)
     norm = torch.norm(quat_norm, dim=-1)
     print(f"Quaternion normalized to unit norm: {norm.item():.6f}")
     assert torch.allclose(norm, torch.tensor(1.0)), "Quaternion normalization failed"
-
+    
     # Complex number normalization
     complex_unnorm = torch.tensor([[3.0, 4.0]])  # Not normalized
     complex_norm = RotationComplex2D.project_parameters(complex_unnorm, None)
     norm = torch.norm(complex_norm, dim=-1)
     print(f"Complex number normalized to unit norm: {norm.item():.6f}")
     assert torch.allclose(norm, torch.tensor(1.0)), "Complex number normalization failed"
-
+    
     # Test 9: Orbit Generation
     print("\n9. Testing orbit generation:")
-
+    
     # 2D rotation orbit
-    orbit_2d = Rotation2D.orbit(10, 2 * math.pi)
+    orbit_2d = Rotation2D.orbit(10, 2*math.pi)
     print(f"2D rotation orbit shape: {orbit_2d.shape}")
     assert orbit_2d.shape == (10, 1), f"2D rotation orbit has wrong shape: {orbit_2d.shape}"
-
+    
     # Single-axis rotation orbit
-    orbit_x = RotationX3D.orbit(8, 2 * math.pi)
+    orbit_x = RotationX3D.orbit(8, 2*math.pi)
     print(f"X-axis rotation orbit shape: {orbit_x.shape}")
     assert orbit_x.shape == (8, 1), f"X-axis rotation orbit has wrong shape: {orbit_x.shape}"
-
+    
     # Complex rotation orbit
-    orbit_complex = RotationComplex2D.orbit(12, 2 * math.pi)
+    orbit_complex = RotationComplex2D.orbit(12, 2*math.pi)
     print(f"Complex rotation orbit shape: {orbit_complex.shape}")
     assert orbit_complex.shape == (12, 2), f"Complex rotation orbit has wrong shape: {orbit_complex.shape}"
     norms = torch.norm(orbit_complex, dim=-1)
@@ -1567,5 +1584,6 @@ if __name__ == "__main__":
     out_2d_dir.sum().backward()
     assert param_2d_dir.grad is not None and param_2d_dir.grad.abs().sum() > 0, "DirectedRotation2D gradient failed"
     print("DirectedRotation2D gradient check passed")
+
 
     print("\nAll rotation tests passed!")

@@ -1,5 +1,16 @@
+import torch
+import warnings
+import torch
 import torch_geometric
+from torch import nn, Tensor
+from typing import Optional
+from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
+from confidence.input_transform import InputTransform
 from pytorch_ood.detector import ViM
+
+
+from torch import nn
+
 
 
 def find_last_linear_layer(model):
@@ -14,7 +25,7 @@ def find_last_linear_layer(model):
     """
     last_linear = None
     for module in model.modules():
-        if isinstance(module, (nn.Linear, torch_geometric.nn.Linear)):
+        if isinstance(module,(nn.Linear, torch_geometric.nn.Linear)):
             last_linear = module
     return last_linear
 
@@ -24,16 +35,14 @@ from torch import nn, Tensor
 from typing import Optional
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
 from confidence.input_transform import InputTransform
-
-
-# based on pytorch_ood
+#based on pytorch_ood
 class ViMTorchConfidence(ClassicConfidenceBase):
     def __init__(
-            self,
-            model: nn.Module,
-            n_dim: int,
-            input_transform: Optional[InputTransform] = None,
-            use_energy: bool = True,
+        self,
+        model: nn.Module,
+        n_dim: int,
+        input_transform: Optional[InputTransform] = None,
+        use_energy: bool = True,
     ):
         if input_transform is not None:
             warnings.warn(
@@ -104,13 +113,13 @@ class ViMTorchConfidence(ClassicConfidenceBase):
         return score
 
 
-# Comparision Module from pytorch_ood.
+#Comparision Module from pytorch_ood.
 class ViMConfidenceNumpy(ClassicConfidenceBase):
     def __init__(
-            self,
-            model: nn.Module,
-            n_dim: int,
-            input_transform: Optional[InputTransform] = None,
+        self,
+        model: nn.Module,
+        n_dim: int,
+        input_transform: Optional[InputTransform] = None,
     ):
         if input_transform is not None:
             warnings.warn(
@@ -156,6 +165,7 @@ class ViMConfidenceNumpy(ClassicConfidenceBase):
 
 import warnings
 
+
 if __name__ == '__main__':
     # Synthetic data
     N, D, C = 100, 16, 4
@@ -174,9 +184,9 @@ if __name__ == '__main__':
     vim_t = ViMTorchConfidence(model=model, n_dim=8)
     vim_t.fit(X, y)
     scores_t = vim_t(X)
-    # print alpha
+    #print alpha
     print("Alpha (ViM):", vim_t.alpha)
-    # print principal subspace
+    #print principal subspace
     print("Principal subspace (ViM):", vim_t.principal_subspace)
 
     # Compare outputs

@@ -1,10 +1,8 @@
 from typing import Dict, Any
-
 import optuna
+import torch
 
 from confidence.direct.logit_based import EnergyConfidence
-from confidence.direct.prob_based import EntropyConfidence
-from confidence.model.ash import ASHConfidence
 from hyper_param.ood.base_prepare import (
     OOD_DEFAULT_PARAM_FACTORIES,
     OOD_PARAM_SAMPLERS,
@@ -14,8 +12,10 @@ from model.basic_networks import find_last_linear_layer
 from model.get_model import get_network_layer
 from src.utils.transformation_problem import TransformationProblem
 
+from confidence.model.ash import ASHConfidence
+from confidence.direct.prob_based import EntropyConfidence
 
-# Vriant of ash only for the last layer that doesnt rely on splitting a model.
+#Vriant of ash only for the last layer that doesnt rely on splitting a model.
 
 def default_ash_last_params() -> Dict[str, Any]:
     """Default parameters for ASH applied to the last layer."""
@@ -28,7 +28,6 @@ def default_ash_last_params() -> Dict[str, Any]:
         "use_feature_confidence": False,
     }
 
-
 def sample_ash_last_params(trial: optuna.Trial, train_cache=None, architecture=None, **kwargs) -> Dict[str, Any]:
     """Sample hyperparameters for ASH-last."""
     return {
@@ -40,15 +39,14 @@ def sample_ash_last_params(trial: optuna.Trial, train_cache=None, architecture=N
         "use_feature_confidence": False,
     }
 
-
 def create_ash_last_problem(
-        params: Dict[str, Any],
-        model,
-        train_cache,
-        transform_seq,
-        dataset_info,
-        architecture,
-        **kwargs
+    params: Dict[str, Any],
+    model,
+    train_cache,
+    transform_seq,
+    dataset_info,
+    architecture,
+    **kwargs
 ) -> TransformationProblem:
     """
     Build and return a TransformationProblem that wraps backbone+head with ASHConfidence.
@@ -77,17 +75,22 @@ def create_ash_last_problem(
     else:
         raise ValueError(f"Invalid confidence_type: {confidence_type}")
 
+
+
     # 2. Instantiate ASHConfidence module
     conf_mod = ASHConfidence(
         backbone=dual_output_model,
         head=head,
         variant=variant,
         percentile=percentile,
-        index_feat=0,  # the wrapper returns features at index 0
-        index_logits=1,  # logits from wrapper at index 1 when applicable
+        index_feat=0,   # the wrapper returns features at index 0
+        index_logits=1, # logits from wrapper at index 1 when applicable
         confidence=confidence,
         use_feature_confidence=use_feature_confidence,
     )
+
+
+
 
     return TransformationProblem(conf_mod, transform_seq, consolidate_method="consolidate_simple")
 
