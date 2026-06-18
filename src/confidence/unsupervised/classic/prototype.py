@@ -199,17 +199,17 @@ class ClassPrototypeConfidence(DistanceConfidence):
 if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
-    N_per = 50;
+    N_per = 50
     D = 2
-    mu0 = np.array([0., 0.]);
+    mu0 = np.array([0., 0.])
     cov0 = np.eye(2) * 0.5
-    mu1 = np.array([5., 5.]);
+    mu1 = np.array([5., 5.])
     cov1 = np.eye(2) * 0.5
     data0 = np.random.multivariate_normal(mu0, cov0, N_per)
     data1 = np.random.multivariate_normal(mu1, cov1, N_per)
-    X = np.vstack([data0, data1]);
+    X = np.vstack([data0, data1])
     y = np.hstack([np.zeros(N_per), np.ones(N_per)])
-    X_t = torch.from_numpy(X).float();
+    X_t = torch.from_numpy(X).float()
     y_t = torch.from_numpy(y).long()
     X_test = torch.tensor([[0.1, -0.2], [4.8, 5.2], [2.5, 2.5]])
     y_test = torch.tensor([0, 1, 0])

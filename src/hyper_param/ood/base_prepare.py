@@ -429,6 +429,9 @@ def make_ood_search_objective(
     return objective
 
 
+
+
+
 def find_best_detector_and_instantiate(
         base_results_dir: str,
         detectors: list,
@@ -440,6 +443,7 @@ def find_best_detector_and_instantiate(
         device,
         val_id_loader,
         val_ood_loader,
+        validation: bool = True,
         prefer_second: Optional[str] = None,
 ) -> Tuple[
     Optional[str],
@@ -453,14 +457,23 @@ def find_best_detector_and_instantiate(
     Find best detector by recorded `accuracy_mean` (preferring mean) and instantiate its OOD problem.
     Returns:
       (best_detector, best_problem, best_score_dict, second_choice, second_problem, second_score_dict)
-    where score dict is `{"mean": float, "se": float}` (values may be math.nan if missing).
+    where score dict is `{"mean": float, "se": float, "std": float}` (values may be math.nan if missing).
+    Per default use validation values.
     """
 
     def _load_score(det_name: str) -> Optional[Dict[str, float]]:
-        eval_path = os.path.join(base_results_dir, det_name, "eval_results.json")
-        eval_default_path = os.path.join(base_results_dir, det_name, "eval_results_default.json")
+        if validation:
+            paths = (
+                os.path.join(base_results_dir, det_name, "val_results.json"),
+                os.path.join(base_results_dir, det_name, "val_results_default.json")
+            )
+        else:
+            paths = (
+                os.path.join(base_results_dir, det_name, "eval_results.json"),
+                os.path.join(base_results_dir, det_name, "eval_results_default.json")
+            )
 
-        for p in (eval_path, eval_default_path):
+        for p in paths:
             if os.path.exists(p):
                 try:
                     with open(p, "r") as f:
@@ -468,12 +481,16 @@ def find_best_detector_and_instantiate(
                 except Exception:
                     continue
                 mean = data.get("accuracy_mean")
-                se = data.get("accuracy_se", data.get("accuracy_std"))  # prefer se, fall back to std
-                # normalize types
+                se = data.get("accuracy_se")
+                std = data.get("accuracy_std")
+
+                # normalize types strictly without silent fallbacks
                 mean_val = float(mean) if isinstance(mean, (int, float)) else math.nan
                 se_val = float(se) if isinstance(se, (int, float)) else math.nan
+                std_val = float(std) if isinstance(std, (int, float)) else math.nan
+
                 if not math.isnan(mean_val):
-                    return {"mean": mean_val, "se": se_val}
+                    return {"mean": mean_val, "se": se_val, "std": std_val}
         return None
 
     # 1) scan detectors for optimized accuracy (use mean)

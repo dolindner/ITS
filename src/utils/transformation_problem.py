@@ -1,5 +1,6 @@
+from src.utils.affine_transforms import AffineTransformation2D
 from src.utils.transform_sequence import TransformSequence
-
+import torch
 
 class TransformationProblem:
     def __init__(self, confidence_module, transform_sequence: TransformSequence,

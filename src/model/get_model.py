@@ -1,3 +1,15 @@
+from .mnist_networks import get_mnist_architectures
+from .bigger_mnist_networks import get_bigger_mnist_architectures
+from .bigger_extended_mnist_networks import get_bigger_extended_mnist_architectures
+from .si_network import get_si_network_architectures
+from .mnist_networks import get_mnist_network
+from .bigger_mnist_networks import get_bigger_mnist_network
+from .bigger_extended_mnist_networks import get_bigger_extended_mnist_network
+from .si_network import get_si_network
+from .si_network import get_si_network_layer
+from .mnist_networks import get_mnist_network_layer
+from .bigger_mnist_networks import get_bigger_mnist_network_layer
+from .bigger_extended_mnist_networks import get_bigger_extended_mnist_network_layer
 from torch import nn
 
 from model.modelnet_architectures import MODELNET_LAYER_MAPPINGS, _build_pointnetplus, _build_pointnetplus_euclidean, \

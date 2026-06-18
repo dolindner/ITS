@@ -61,6 +61,9 @@ under external in its subfolder vnn.
 
 Pretrained models for reproducibility can be found under:
 https://huggingface.co/dlindner/ITSModels
+In addition there are .yaml files that include the best found hyperparameters for the search comparison
+as well as the comparison of OOD detectors.
+
 
 
 

@@ -1,3 +1,4 @@
+from its.data import load_mnist
 import argparse
 
 parser = argparse.ArgumentParser(description='Argument parser for the script.')

@@ -1,5 +1,6 @@
-from typing import Optional, TypeVar
-
+from typing import Optional, TypeVar, Callable
+import torch
+from pytorch_ood.detector import SHE
 from torch import nn, Tensor
 
 from confidence.unsupervised.unsupervised_base import ClassicConfidenceBase
@@ -13,7 +14,7 @@ class SHETorchConfidence(ClassicConfidenceBase):
     Fit per‐class mean patterns, then score via -⟨z, pattern_y⟩.
     """
 
-    def __init__(self, input_transform: Optional[nn.Module] = None, map_function: Optional[callable] = None):
+    def __init__(self, input_transform: Optional[nn.Module] = None, map_function: Optional[Callable] = None):
 
         super().__init__(input_transform=input_transform)
         self.patterns_: Optional[Tensor] = None
@@ -75,11 +76,6 @@ class SHETorchConfidence(ClassicConfidenceBase):
 
 
 if __name__ == "__main__":
-    import torch
-    from torch import nn, Tensor
-
-    from pytorch_ood.detector import SHE
-
     # --- Dummy data ---
     num_classes = 3
     feature_dim = 5

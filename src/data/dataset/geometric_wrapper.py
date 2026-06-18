@@ -1,3 +1,4 @@
+from torch_geometric.transforms import NormalizeRotation as PyGNormalizeRotation
 from copy import deepcopy
 
 import torch
