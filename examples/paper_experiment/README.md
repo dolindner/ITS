@@ -62,7 +62,7 @@ under external in its subfolder vnn.
 Pretrained models for reproducibility can be found under:
 https://huggingface.co/dlindner/ITSModels
 
-```
+
 
 ## Example Notebooks
 
@@ -70,7 +70,8 @@ https://huggingface.co/dlindner/ITSModels
 
 Under the [examples](./examples) folder you find `jupyter notebooks` that help you getting started.
 Under the [paper_experiment](examples/paper_experiment) subfolder there is a collection of all experiments that were run 
-for the paper.
+for the Zero-Shot Test-Time Canonicalization
+using Out-of-Distribution Scoring paper.
 
 
 ## Bibtex
