@@ -4,7 +4,7 @@
 This branch contains the code for the paper:
 "[Zero-Shot Test-Time Canonicalization
 using Out-of-Distribution Scoring].
-It iss based on the ITS repository.
+It is based on the ITS repository.
 
 ## Abstract
 Pretrained vision models often misclassify inputs that are rotated, scaled, or sheared, even though these affine transformations leave the object class unchanged. 
@@ -69,6 +69,7 @@ Under the [examples](./examples) folder you find `jupyter notebooks` that help y
 Under the [paper_experiment](examples/paper_experiment) subfolder there is a collection of all experiments that were run 
 for the Zero-Shot Test-Time Canonicalization
 using Out-of-Distribution Scoring paper.
+To run these currently the source code is still needed.
 
 
 ## Bibtex
