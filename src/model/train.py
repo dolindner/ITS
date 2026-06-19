@@ -41,10 +41,34 @@ custom_loss=None,
         strict=True, custom_loss_on_data=False
 ):
     """
-    Train (unless cached) and save best model.
-    log_path: optional root directory for logs & checkpoints. If None -> model_dir_path/model_name_logs.
-    wandb_entity: optional; omit to use current user (not required).
-    """
+        Train (unless cached) and save the best model.
+
+        Args:
+            model (nn.Module): The PyTorch neural network model to train.
+            model_dir_path (Path): Directory where the trained model weights will be saved.
+            model_name (str): Name of the model, used for naming saved files and logs.
+            train_loader (DataLoader): Data loader for the training dataset.
+            val_loader (DataLoader): Data loader for the validation dataset.
+            trainer_kwargs (dict, optional): Additional keyword arguments passed to the PyTorch Lightning Trainer. Defaults to None.
+            optimizer_type (type, optional): The torch optimizer class to use. Defaults to torch.optim.AdamW.
+            optimizer_kwargs (dict, optional): Keyword arguments to initialize the optimizer. Defaults to None.
+            load_if_exists (bool, optional): If True, attempts to load weights from an existing file instead of training. Defaults to True.
+            monitor (str, optional): Metric name to monitor for checkpointing and early stopping. Defaults to "val_acc".
+            monitor_mode (str, optional): Either "min" or "max" determining the optimization direction of the monitored metric. Defaults to "max".
+            use_wandb (bool, optional): Whether to enable Weights & Biases logging. Defaults to True.
+            wandb_project (str, optional): Name of the Weights & Biases project. Defaults to None.
+            wandb_entity (str, optional): Optional Weights & Biases entity/username. Omit to use the current user. Defaults to None.
+            log_path (str | Path, optional): Root directory for logs and checkpoints. If None, defaults to `model_dir_path/model_name_logs`. Defaults to None.
+            batch_transform (callable, optional): Transformations to apply to each batch before passing to the model. Defaults to None.
+            custom_loss (callable, optional): A custom loss function to override the default. Defaults to None.
+            strict (bool, optional): Strict loading compliance for state dict weights. Defaults to True.
+            custom_loss_on_data (bool, optional): Whether to apply custom loss calculation directly using the data as input.
+
+        Returns:
+            tuple[nn.Module, str]: A tuple containing:
+                - nn.Module: The evaluation-ready trained (or loaded) PyTorch model.
+                - str: The string path where the final model weights were loaded from or saved to.
+        """
     # Ensure Path
     if not isinstance(model_dir_path, Path):
         model_dir_path = Path(model_dir_path)
@@ -207,12 +231,31 @@ def train_or_load_energy_model(
     log_path: str | Path | None = None,
     deterministic_val = False
 ):
-    """
-    Train EnergyPredictionConfidence model (unless cached) and save best weights using safetensors.
-    All parameters are passed directly to EnergyPredictionConfidence.
-    log_path: optional root directory for logs & checkpoints. If None -> model_dir_path/model_name_logs.
-    wandb_entity: optional; omit to use current user (not required).
-    """
+    """Train EnergyPredictionConfidence model (unless cached) and save best weights using safetensors.
+            All parameters are passed directly to EnergyPredictionConfidence.
+
+            Args:
+                model (torch.nn.Module): The underlying energy backbone model to wrap and optimize.
+                model_dir_path (Path): Target directory for saving model weights and local artifacts.
+                model_name (str): Identifier name used to label checkpoints and log directories.
+                train_loader (DataLoader): Iterable training dataset loader.
+                val_loader (DataLoader): Iterable validation dataset loader.
+                negative_sampling_module (nn.Module, optional): Custom module handling negative sample synthesis. Defaults to None.
+                trainer_kwargs (dict, optional): Additional configuration overrides passed down to the Lightning Trainer. Defaults to None.
+                optimizer_type (type, optional): Type of the optimizer
+                optimizer_kwargs (dict, optional): Paramters of the optimizer
+                loss_type (str, optional): Selection of optimization losses, e.g., "bce". Defaults to "bce".
+                gp_weight (float, optional): Penalty weighting balance index assigned to gradient penalization methods. Defaults to 100.0.
+                load_if_exists (bool, optional): If True, attempts to load weights from an existing file instead of training. Defaults to True.
+                monitor (str, optional): Metric used for checkpointing. Defaults to "val_acc".
+                monitor_mode (str, optional): Wether to maximize or minize montor variable.
+                use_wandb (bool, optional): If tracking logs via the Weights & Biases platform dashboard is active. Defaults to True.
+                wandb_project (str, optional): Name of the Weights & Biases project. Defaults to None.
+               wandb_entity (str, optional): Optional Weights & Biases entity/username. Omit to use the current user. Defaults to None.
+
+           Returns:
+                EnergyPredictionConfidence: An operational evaluation-ready instance encapsulating the confidence interface wrapper.
+            """
     if not isinstance(model_dir_path, Path):
         model_dir_path = Path(model_dir_path)
     model_dir_path.mkdir(parents=True, exist_ok=True)

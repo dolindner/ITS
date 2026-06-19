@@ -254,6 +254,21 @@ class BILSTMSKETCHClassifier(nn.Module):
                  preprocess_module: nn.Module = None,
                  augmentation: nn.Module = None,
                  attn_dropout: float = 0.2):
+        """Bidirectional LSTM/GRU model designed for sketch sequence classification tasks.
+
+            Attributes:
+                input_size: Dimension of the input features per sequence step (e.g., 3 or 5).
+                hidden_size: Number of features in the hidden state of the RNN.
+                num_layers: Number of recurrent layers.
+                num_classes: Number of target classification output classes.
+                rnn_type: Type of RNN layer to use ('lstm' or 'gru'). Defaults to 'lstm'.
+                pool_type: Pooling strategy over time ('attn', 'max', or 'last'). Defaults to 'attn'.
+                dropout: Dropout probability between recurrent layers and in the MLP. Defaults to 0.3.
+                num_mlp_layers: Number of hidden layers in the final classification MLP. Defaults to 1.
+                preprocess_module: Optional nn.Module applied to inputs before the RNN. Defaults to None.
+                augmentation: Optional nn.Module for data augmentation. Defaults to None.
+                attn_dropout: Dropout probability applied specifically to attention weights. Defaults to 0.2.
+            """
         super().__init__()
 
         assert rnn_type in ['lstm', 'gru']

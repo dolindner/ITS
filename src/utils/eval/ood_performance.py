@@ -968,6 +968,11 @@ def load_or_run_evaluate_confidence_and_search(
 
         return merged_result
 
+    seed = int(time.time_ns() % (2 ** 32 - 1))
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     # No cache or cache is None -> compute from scratch
     result = evaluate_confidence_and_search(
         model=model,

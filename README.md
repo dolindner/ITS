@@ -1,37 +1,27 @@
-# Inverse Transformation Search (ITS)
+# Zero-Shot Test-Time Canonicalization using Out-of-Distribution Scoring
 
-![Summary](./res/img/summary.svg)
 
-This is the official repository of the paper:
-"[Tilt your Head: Activating the Hidden Spatial-Invariance of Classifiers](https://arxiv.org/abs/2405.03730)" 
-published as a main-conference paper at the ICML 2024 in Vienna.
-You can find more information [here](https://icml.cc/virtual/2024/poster/34980).
-Check out our [video recording](https://www.youtube.com/watch?v=S5lt50eEZQM&t=39s)
-and our [poster](https://icml.cc/media/PosterPDFs/ICML%202024/34980.png?t=1719386790.1000016).
-For questions or comments reach out to us via [LinkedIn](https://www.linkedin.com/in/johann-schmidt/)
-or via `johann.schmidt@ovgu.de`.
+This branch contains the code for the paper:
+"[Zero-Shot Test-Time Canonicalization
+using Out-of-Distribution Scoring].
+It iss based on the ITS repository.
 
 ## Abstract
-Deep neural networks are applied in more and more areas of everyday life. 
-However, they still lack essential abilities, such as robustly dealing with 
-spatially transformed input signals. Approaches to mitigate this severe robustness 
-issue are limited to two pathways: Either models are implicitly regularised by 
-increased sample variability (data augmentation) or explicitly constrained by 
-hard-coded inductive biases. The limiting factor of the former is the size of 
-the data space, which renders sufficient sample coverage intractable. 
-The latter is limited by the engineering effort required to develop such 
-inductive biases for every possible scenario. Instead, we take inspiration 
-from human behaviour, where percepts are modified by mental or physical actions 
-during inference. We propose a novel technique to emulate such an inference process 
-for neural nets. This is achieved by traversing a sparsified inverse transformation 
-tree during inference using parallel energy-based evaluations. 
-Our proposed inference algorithm, called Inverse Transformation Search (ITS), 
-is model-agnostic and equips the model with zero-shot pseudo-invariance to 
-spatially transformed inputs. We evaluated our method on several benchmark datasets,
-including a synthesised ImageNet test set. ITS outperforms the utilised baselines 
-on all zero-shot test scenarios.
+Pretrained vision models often misclassify inputs that are rotated, scaled, or sheared, even though these affine transformations leave the object class unchanged. 
+Robustness is usually restored either by building equivariance into the architecture or by retraining with augmentation,
+both of which require changing or retraining the model. 
+Test-time canonicalization instead leaves the classifier untouched.
+It undoes the transformation of each input, mapping it to a canonical form near the training distribution before classification. 
+Existing canonicalizers, however, rely on a narrow set of logit-based energy scores and bespoke search procedures,
+leaving the design space of scoring functions and optimizers unexplored. 
+We reframe canonicalization as out-of-distribution (OOD) detection, which lets any OOD score serve as the energy minimized over transformations. 
+Across benchmarks ranging from handwritten characters and sketches to natural images and 3D point clouds, 
+we systematically evaluate around twenty OOD scores and nine search algorithms,
+finding that distance-based scores paired with random search and local refinement perform best overall. 
+Because canonicalizing an already-aligned input can hurt accuracy, 
+we add a gated mechanism that transforms an input only when its OOD score indicates this is needed, 
+preserving most in-distribution accuracy while retaining the robustness gains on transformed inputs.
 
-![Algorithm](./res/img/algorithm.svg)
 
 ## Installation
 First, clone this repository.
@@ -39,68 +29,51 @@ Once inside the repository folder (`cd ITS`), you install it by running
 ```
 pip install . 
 ```
-Note that this installs `torch` for `Python >= 3.8` and `CUDA == 11.8`. 
-You can check your current `CUDA` version using `nvcc --version`.
-If the version differs, either change the `setup.py` manually 
-or reinstall `torch` for your setup (find more details 
-[here](https://pytorch.org/get-started/locally/)).
-
-Furthermore, the `setup.py` ensures that the entire project is executable, 
-hence it also contains a `jupyter` instance.
-If this is not required, feel free to remove it from the package list.
+The user has to ensure to use a recent torch version that is compatible with the requirements.
 
 A complete list of all requirements can be found [here](./requirements.txt).
-You can also install from ITS using
-```
-python -m pip install -r requirements.txt
-```
+
+Note some packages have very specific requirements escnn for example needs lie-learn, I used
+lie-learn-escience as it was compatible with the current versionso f other packages.
+
+Some datasets have to be manually downloaded for the TU Berlin dataset. Unfortunately, the original 
+download link is down at the time of writing. We require the sketches_matlab.zip file from the 
+dataset from https://cybertron.cg.tu-berlin.de/eitz/projects/classifysketch/sketches_matlab.zip.
+Alternatively you may need to request the file from the authors, use a mirror or cached version of the file (like wayback machine ).
+The sketches.mat file should be put under experimenent_files/data/tu_berlin/sketches_matlab.
+We process them by only keeping the edge points and truncating after 200 points.
+
+For the SI-Score dataset, it can be downloaded as described in https://github.com/google-research/si-score.
+We only require the subset with only rotation transform. The folders named after the imagenet classes
+can then be put under experimenent_files/data/si_score/rotation. The imagenet subset for fitting
+OOD detectors requires huggingface for downloading. The init method of the dataset class provides
+a way to download it.
+
+For the Vector Neuron Comparison https://github.com/FlyingGiraffe/vnn needs to be downloaded and put
+under external in its subfolder vnn.
+
+Pretrained models for reproducibility can be found under:
+https://huggingface.co/dlindner/ITSModels
+In addition, there are .yaml files that include the best found hyperparameters for the search comparison
+as well as the comparison of OOD detectors. If not used, different hyperparameter may be found 
+and the best methods might also be slightly different, as there were several close cases between the distance-based OOD
+detectors.
+
+
+
 
 ## Example Notebooks
 
-![Example](./res/img/algorithm_example.svg)
 
 Under the [examples](./examples) folder you find `jupyter notebooks` that help you getting started.
-We recommend the following reading order:
+Under the [paper_experiment](examples/paper_experiment) subfolder there is a collection of all experiments that were run 
+for the Zero-Shot Test-Time Canonicalization
+using Out-of-Distribution Scoring paper.
 
-- [(F)MNIST](./examples/(f)mnist.ipynb)
-- more to follow soon
-
-## Console Usage
-
-To benchmark `ITS` we suggest using the console interface:
-```
-python its.py
-    
-  --gpu GPU             GPU index to use (default: 0)
-  --transformations {rotation,scaling,shearing,translation} [{rotation,scaling,shearing,translation} ...]
-                        List of transformations to apply.
-  --domains DOMAINS [DOMAINS ...]
-                        List of domains for each transformation.
-  --n_samples N_SAMPLES
-                        Number of samples (default: 17)
-  --model_path MODEL_PATH
-                        Path to the model file (default: ./model/mnist.pth)
-  --test_set_loader_path TEST_SET_LOADER_PATH
-                        Path to the test set loader file (default: ./data/mnist/test_loader.pickle)
-  --dataset {mnist,fmnist}
-                        Dataset to use (default: mnist)
-  --n_hypotheses N_HYPOTHESES
-                        Number of hypotheses (default: 3)
-  --mc_steps MC_STEPS   Number of Monte Carlo steps (default: 10)
-  --batch_size BATCH_SIZE
-                        The batch size used for testing. (default: 128)
-  --change_of_mind {score,off}
-                        Criterion for change of mind (default: 'score')
-  --en_unique_class_condition EN_UNIQUE_CLASS_CONDITION
-                        Enable unique class condition (default: True)
-```
-The default setup (without passing any arguments) starts ITS on MNIST and returns the mean accuracy like
-```
-Mean accuracy on the transformed test set [with ITS]: 0.771.
-```
 
 ## Bibtex
 If you find our work interesting, please cite us.
+This repository was based on.
 ```
 @inproceedings{Schmidt2024,
   title={Tilt your Head: Activating the Hidden Spatial-Invariance of Classifiers},
@@ -109,3 +82,4 @@ If you find our work interesting, please cite us.
   year={2024}
 }
 ```
+Bib for the current paper will follow.

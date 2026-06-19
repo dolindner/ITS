@@ -429,9 +429,6 @@ def make_ood_search_objective(
     return objective
 
 
-
-
-
 def find_best_detector_and_instantiate(
         base_results_dir: str,
         detectors: list,
@@ -454,15 +451,18 @@ def find_best_detector_and_instantiate(
     Optional[Dict[str, float]],
 ]:
     """
-    Find best detector by recorded `accuracy_mean` (preferring mean) and instantiate its OOD problem.
-    Returns:
-      (best_detector, best_problem, best_score_dict, second_choice, second_problem, second_score_dict)
-    where score dict is `{"mean": float, "se": float, "std": float}` (values may be math.nan if missing).
-    Per default use validation values.
-    """
 
-    def _load_score(det_name: str) -> Optional[Dict[str, float]]:
-        if validation:
+   Find best detector by recorded `accuracy_mean` (preferring mean) and instantiate its OOD problem.
+   Returns:
+   (best_detector, best_problem, best_score_dict, second_choice, second_problem, second_score_dict)
+   where score dict is `{"mean": float, "se": float, "std": float}` (values may be math.nan if missing).
+   Per default use validation values for selection
+
+   """
+
+    def _load_score(det_name: str, force_eval: bool = False) -> Optional[Dict[str, float]]:
+        # If force_eval is True, always load from evaluation files regardless of the validation flag
+        if validation and not force_eval:
             paths = (
                 os.path.join(base_results_dir, det_name, "val_results.json"),
                 os.path.join(base_results_dir, det_name, "val_results_default.json")
@@ -493,23 +493,25 @@ def find_best_detector_and_instantiate(
                     return {"mean": mean_val, "se": se_val, "std": std_val}
         return None
 
-    # 1) scan detectors for optimized accuracy (use mean)
+    # 1) scan detectors for optimized accuracy (use validation flag to pick)
     best_detector: Optional[str] = None
     best_score_val = -math.inf
-    best_score_dict: Optional[Dict[str, float]] = None
+
     for det in detectors:
-        score_dict = _load_score(det)
+        score_dict = _load_score(det, force_eval=False)
         if score_dict is None:
             continue
         mean = score_dict["mean"]
         if mean > best_score_val:
             best_score_val = mean
             best_detector = det
-            best_score_dict = score_dict
 
     # If we didn't find any valid scored detector, return Nones
     if best_detector is None:
         return None, None, None, None, None, None
+
+    # always load the evaluation score for the final return payload
+    best_score_dict = _load_score(best_detector, force_eval=True)
 
     # 2) load best params for best_detector (or default if no params file)
     det_dir = os.path.join(base_results_dir, best_detector)
@@ -551,40 +553,38 @@ def find_best_detector_and_instantiate(
 
     best_problem = create_ood_problem(best_detector, best_params, **final_kwargs)
 
-    # 4) prepare the second problem: choose the better of energy vs entropy by recorded performance
+    # 4) prepare the second problem: choose the better of energy vs entropy by selection criteria
     if prefer_second and prefer_second in detectors:
         second_choice = prefer_second
-        second_score_dict = _load_score(second_choice)
     else:
         candidates = [d for d in ("energy", "entropy") if d in detectors]
         second_choice = None
         best_cand_val = -math.inf
-        second_score_dict = None
         for c in candidates:
-            sdict = _load_score(c)
+            sdict = _load_score(c, force_eval=False)
             if sdict is not None and sdict["mean"] > best_cand_val:
                 best_cand_val = sdict["mean"]
                 second_choice = c
-                second_score_dict = sdict
 
     # avoid selecting same detector twice
     if second_choice == best_detector:
         other = "entropy" if best_detector == "energy" else "energy"
         if other in detectors:
-            other_score = _load_score(other)
-            if other_score is not None:
+            # check if it exists based on selection rule
+            if _load_score(other, force_eval=False) is not None:
                 second_choice = other
-                second_score_dict = other_score
             else:
                 second_choice = None
-                second_score_dict = None
         else:
             second_choice = None
-            second_score_dict = None
 
     if second_choice is None:
         second_problem = None
+        second_score_dict = None
     else:
+        # always load evaluation score for the final return payload
+        second_score_dict = _load_score(second_choice, force_eval=True)
+
         det2_dir = os.path.join(base_results_dir, second_choice)
         params2_path = os.path.join(det2_dir, "best_params.json")
         params2 = None
